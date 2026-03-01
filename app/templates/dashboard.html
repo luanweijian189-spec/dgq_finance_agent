@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DGQ Finance Agent Dashboard</title>
+</head>
+<body>
+    <h1>DGQ Finance Agent Dashboard</h1>
+
+    {% if message %}
+    <p>{{ message }}</p>
+    {% endif %}
+
+    <section>
+        <h2>核心指标</h2>
+        <ul>
+            <li>股票池数量：{{ metrics.stock_pool_size }}</li>
+            <li>荐股人数：{{ metrics.recommender_count }}</li>
+            <li>平均股票评分：{{ "%.2f"|format(metrics.avg_stock_score) }}</li>
+            <li>平均信息源评分：{{ "%.2f"|format(metrics.avg_reliability_score) }}</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2>股票消息输入（复制粘贴）</h2>
+        <form action="/manual/import" method="post">
+            <label>
+                默认荐股人（当文本里没有人名时使用）
+                <input name="default_recommender_name" value="群友" />
+            </label>
+            <br />
+            <label>
+                粘贴消息文本（支持多种格式）
+                <br />
+                <textarea
+                    name="raw_text"
+                    rows="12"
+                    cols="120"
+                    placeholder="示例1：张三：600519 看好，逻辑是高端白酒复苏&#10;示例2：李四 2026-03-01 09:31&#10;000001 推荐，逻辑是估值修复&#10;示例3：[{\"sender\":\"王五\",\"content\":\"300750 看好，逻辑是出海\",\"time\":\"2026-03-01 10:20\"}]&#10;示例4：CSV头 message,recommender_name,recommend_ts"
+                    required
+                ></textarea>
+            </label>
+            <br />
+            <button type="submit">批量解析并导入</button>
+        </form>
+        <p>
+            已支持：
+            <br />
+            1) <strong>人名: 内容</strong> / <strong>人名：内容</strong>
+            <br />
+            2) 微信常见复制样式：<strong>人名 时间</strong> 下一行是内容
+            <br />
+            3) JSON（list/dict）字段：message/content/text + recommender_name/sender/name + recommend_ts/time/ts
+            <br />
+            4) CSV（含表头）字段：message/content/text + recommender_name/sender/name + recommend_ts/time/ts
+        </p>
+    </section>
+
+    <section>
+        <h2>资讯输入（RAG资料）</h2>
+        <form action="/manual/research" method="post">
+            <label>
+                录入人
+                <input name="operator_name" value="研究员" />
+            </label>
+            <br />
+            <label>
+                粘贴资讯/研报/观点（可多行）
+                <br />
+                <textarea
+                    name="research_text"
+                    rows="8"
+                    cols="120"
+                    placeholder="示例：宏观观察：资金偏防御，银行板块相对强势，暂无明确个股推荐"
+                    required
+                ></textarea>
+            </label>
+            <br />
+            <button type="submit">保存为资讯资料</button>
+        </form>
+    </section>
+
+    <section>
+        <h2>股票池跟踪视图（按首次接收）</h2>
+        <table border="1" cellspacing="0" cellpadding="6">
+            <thead>
+                <tr>
+                    <th>股票代码</th>
+                    <th>股票名称</th>
+                    <th>荐股人</th>
+                    <th>首次接收时间</th>
+                    <th>最新评分</th>
+                    <th>最新收益率(%)</th>
+                    <th>最新评估日期</th>
+                    <th>状态</th>
+                    <th>推荐逻辑</th>
+                    <th>最新跟踪分析</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in tracking_rows %}
+                <tr>
+                    <td>{{ row.stock_code }}</td>
+                    <td>{{ row.stock_name or '-' }}</td>
+                    <td>{{ row.recommender_name }}</td>
+                    <td>{{ row.first_seen }}</td>
+                    <td>{{ "%.1f"|format(row.latest_score) }}</td>
+                    <td>{{ "%.2f"|format(row.latest_pnl) }}</td>
+                    <td>{{ row.latest_date or '-' }}</td>
+                    <td>{{ row.status }}</td>
+                    <td>{{ row.logic }}</td>
+                    <td>{{ row.latest_notes or '-' }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="10">暂无数据</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section>
+        <h2>每日迭代跟踪记录（最新500条）</h2>
+        <table border="1" cellspacing="0" cellpadding="6">
+            <thead>
+                <tr>
+                    <th>日期</th>
+                    <th>股票代码</th>
+                    <th>股票名称</th>
+                    <th>荐股人</th>
+                    <th>评分</th>
+                    <th>收益率(%)</th>
+                    <th>原始逻辑</th>
+                    <th>当日分析</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in daily_records %}
+                <tr>
+                    <td>{{ row.date }}</td>
+                    <td>{{ row.stock_code }}</td>
+                    <td>{{ row.stock_name or '-' }}</td>
+                    <td>{{ row.recommender_name }}</td>
+                    <td>{{ "%.1f"|format(row.evaluation_score) }}</td>
+                    <td>{{ "%.2f"|format(row.pnl_percent) }}</td>
+                    <td>{{ row.logic }}</td>
+                    <td>{{ row.daily_notes }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8">暂无日迭代记录</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</body>
+</html>

@@ -1,0 +1,14 @@
+fastapi==0.115.12
+uvicorn==0.34.0
+sqlalchemy==2.0.38
+psycopg[binary]==3.2.5
+alembic==1.14.1
+apscheduler==3.11.0
+pydantic==2.10.6
+pydantic-settings==2.8.0
+jinja2==3.1.5
+python-multipart==0.0.20
+requests==2.32.3
+httpx==0.28.1
+baostock==0.8.9
+tushare==1.4.18

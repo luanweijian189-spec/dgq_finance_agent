@@ -1,0 +1,9 @@
+
+> wechaty-relay@1.0.0 start
+> node index.js
+
+18:30:46 INFO scan status=2 qrcode=https://login.weixin.qq.com/l/YbZJrfbPAw==
+18:30:46 INFO scan scan this image url: https://api.qrserver.com/v1/create-qr-code/?size=420x420&data=https%3A%2F%2Flogin.weixin.qq.com%2Fl%2FYbZJrfbPAw%3D%3D
+18:32:30 INFO scan status=3 qrcode=https://login.weixin.qq.com/l/YbZJrfbPAw==
+18:32:30 INFO scan scan this image url: https://api.qrserver.com/v1/create-qr-code/?size=420x420&data=https%3A%2F%2Flogin.weixin.qq.com%2Fl%2FYbZJrfbPAw%3D%3D
+18:35:52 ERR relay unhandledRejection: AssertionError: 400 != 400
