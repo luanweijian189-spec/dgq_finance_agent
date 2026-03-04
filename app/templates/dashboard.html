@@ -3,158 +3,605 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DGQ Finance Agent Dashboard</title>
+    <title>DGQ Finance Agent · 智能选股平台</title>
+    <style>
+        /* ===== Reset & Base ===== */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --surface2: #22263a;
+            --border: #2e3350;
+            --accent: #4f8ef7;
+            --accent2: #6c63ff;
+            --green: #22c55e;
+            --red: #ef4444;
+            --yellow: #f59e0b;
+            --text: #e2e8f0;
+            --text-muted: #8892a4;
+            --radius: 10px;
+            --shadow: 0 4px 24px rgba(0,0,0,.4);
+        }
+        body {
+            font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* ===== Top Nav ===== */
+        .topnav {
+            background: linear-gradient(135deg, #141728 0%, #1e2240 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 0 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 60px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 16px rgba(0,0,0,.5);
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: .5px;
+        }
+        .brand-icon {
+            width: 32px; height: 32px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+        }
+        .brand-name { color: #fff; }
+        .brand-sub { color: var(--text-muted); font-size: 12px; font-weight: 400; margin-left: 4px; }
+        .nav-time { color: var(--text-muted); font-size: 12px; }
+
+        /* ===== Layout ===== */
+        .page { max-width: 1440px; margin: 0 auto; padding: 28px 32px 60px; }
+
+        /* ===== Flash Message ===== */
+        .flash {
+            background: linear-gradient(135deg, #1a3a2a, #1f4030);
+            border: 1px solid #2f6b4a;
+            border-left: 4px solid var(--green);
+            color: #86efac;
+            padding: 12px 18px;
+            border-radius: var(--radius);
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .flash::before { content: "✓"; font-weight: 700; color: var(--green); }
+
+        /* ===== Section Title ===== */
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-title .dot {
+            width: 4px; height: 18px;
+            background: linear-gradient(180deg, var(--accent), var(--accent2));
+            border-radius: 2px;
+        }
+        .section-badge {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 20px;
+            margin-left: auto;
+        }
+
+        /* ===== Metric Cards ===== */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        @media (max-width: 900px) { .metrics-grid { grid-template-columns: repeat(2, 1fr); } }
+        .metric-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px 24px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color .2s, transform .2s;
+        }
+        .metric-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+        .metric-card::before {
+            content: "";
+            position: absolute; top: 0; left: 0; right: 0; height: 3px;
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
+        }
+        .metric-label { color: var(--text-muted); font-size: 12px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
+        .metric-value { font-size: 28px; font-weight: 700; color: var(--text); }
+        .metric-icon {
+            position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
+            font-size: 28px; opacity: .15;
+        }
+
+        /* ===== Input Panel Grid ===== */
+        .input-grid {
+            display: grid;
+            grid-template-columns: 3fr 2fr;
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+        @media (max-width: 1024px) { .input-grid { grid-template-columns: 1fr; } }
+
+        /* ===== Card ===== */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            box-shadow: var(--shadow);
+        }
+
+        /* ===== Form Elements ===== */
+        .form-group { margin-bottom: 14px; }
+        .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 6px;
+        }
+        .form-input, .form-textarea {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 9px 12px;
+            font-size: 13px;
+            font-family: inherit;
+            transition: border-color .2s, box-shadow .2s;
+            resize: vertical;
+        }
+        .form-input:focus, .form-textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(79,142,247,.15);
+        }
+        .form-input::placeholder, .form-textarea::placeholder { color: #4a5568; }
+        .form-textarea { min-height: 140px; line-height: 1.5; }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all .2s;
+            font-family: inherit;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            color: #fff;
+        }
+        .btn-primary:hover { opacity: .9; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(79,142,247,.4); }
+        .btn-secondary {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+        .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+        .format-hint {
+            margin-top: 14px;
+            padding: 12px 14px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.8;
+        }
+        .format-hint strong { color: var(--text); }
+
+        /* ===== Tables ===== */
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            margin-bottom: 32px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        thead tr {
+            background: var(--surface2);
+            border-bottom: 1px solid var(--border);
+        }
+        thead th {
+            padding: 11px 14px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            white-space: nowrap;
+        }
+        tbody tr {
+            border-bottom: 1px solid rgba(46,51,80,.6);
+            transition: background .15s;
+        }
+        tbody tr:last-child { border-bottom: none; }
+        tbody tr:hover { background: var(--surface2); }
+        td {
+            padding: 10px 14px;
+            color: var(--text);
+            vertical-align: top;
+            max-width: 260px;
+        }
+        td.nowrap { white-space: nowrap; }
+        td.logic-cell, td.notes-cell {
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        .no-data td {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 40px;
+            font-size: 13px;
+        }
+
+        /* ===== Stock Code Pill ===== */
+        .stock-code {
+            display: inline-block;
+            background: rgba(79,142,247,.15);
+            color: var(--accent);
+            border: 1px solid rgba(79,142,247,.3);
+            border-radius: 4px;
+            padding: 2px 7px;
+            font-weight: 600;
+            font-size: 12px;
+            letter-spacing: .5px;
+            white-space: nowrap;
+        }
+
+        /* ===== Score Badge ===== */
+        .score-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        .score-high { background: rgba(34,197,94,.15); color: var(--green); border: 1px solid rgba(34,197,94,.3); }
+        .score-mid  { background: rgba(245,158,11,.15); color: var(--yellow); border: 1px solid rgba(245,158,11,.3); }
+        .score-low  { background: rgba(239,68,68,.15);  color: var(--red);    border: 1px solid rgba(239,68,68,.3); }
+
+        /* ===== PnL Cell ===== */
+        .pnl-pos { color: var(--green); font-weight: 600; }
+        .pnl-neg { color: var(--red);   font-weight: 600; }
+        .pnl-zero{ color: var(--text-muted); }
+
+        /* ===== Status Badge ===== */
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .status-active   { background: rgba(34,197,94,.15);  color: var(--green);  border: 1px solid rgba(34,197,94,.25); }
+        .status-watching { background: rgba(79,142,247,.15);  color: var(--accent); border: 1px solid rgba(79,142,247,.25); }
+        .status-closed   { background: rgba(100,116,139,.15); color: #94a3b8;       border: 1px solid rgba(100,116,139,.25); }
+        .status-default  { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
+
+        /* ===== Section Spacing ===== */
+        .section { margin-bottom: 32px; }
+
+        /* ===== Scrollbar ===== */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3e4668; }
+    </style>
 </head>
 <body>
-    <h1>DGQ Finance Agent Dashboard</h1>
 
+<!-- Top Navigation -->
+<nav class="topnav">
+    <div class="brand">
+        <div class="brand-icon">📈</div>
+        <span class="brand-name">DGQ Finance Agent</span>
+        <span class="brand-sub">智能选股平台</span>
+    </div>
+    <div class="nav-time" id="nav-clock"></div>
+</nav>
+
+<div class="page">
+
+    <!-- Flash Message -->
     {% if message %}
-    <p>{{ message }}</p>
+    <div class="flash">{{ message }}</div>
     {% endif %}
 
-    <section>
-        <h2>核心指标</h2>
-        <ul>
-            <li>股票池数量：{{ metrics.stock_pool_size }}</li>
-            <li>荐股人数：{{ metrics.recommender_count }}</li>
-            <li>平均股票评分：{{ "%.2f"|format(metrics.avg_stock_score) }}</li>
-            <li>平均信息源评分：{{ "%.2f"|format(metrics.avg_reliability_score) }}</li>
-        </ul>
-    </section>
+    <!-- Metrics Cards -->
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-label">股票池数量</div>
+            <div class="metric-value">{{ metrics.stock_pool_size }}</div>
+            <div class="metric-icon">🏦</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">荐股人数</div>
+            <div class="metric-value">{{ metrics.recommender_count }}</div>
+            <div class="metric-icon">👥</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">平均股票评分</div>
+            <div class="metric-value">{{ "%.2f"|format(metrics.avg_stock_score) }}</div>
+            <div class="metric-icon">⭐</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">平均信息源可靠度</div>
+            <div class="metric-value">{{ "%.2f"|format(metrics.avg_reliability_score) }}</div>
+            <div class="metric-icon">🎯</div>
+        </div>
+    </div>
 
-    <section>
-        <h2>股票消息输入（复制粘贴）</h2>
-        <form action="/manual/import" method="post">
-            <label>
-                默认荐股人（当文本里没有人名时使用）
-                <input name="default_recommender_name" value="群友" />
-            </label>
-            <br />
-            <label>
-                粘贴消息文本（支持多种格式）
-                <br />
-                <textarea
-                    name="raw_text"
-                    rows="12"
-                    cols="120"
-                    placeholder="示例1：张三：600519 看好，逻辑是高端白酒复苏&#10;示例2：李四 2026-03-01 09:31&#10;000001 推荐，逻辑是估值修复&#10;示例3：[{\"sender\":\"王五\",\"content\":\"300750 看好，逻辑是出海\",\"time\":\"2026-03-01 10:20\"}]&#10;示例4：CSV头 message,recommender_name,recommend_ts"
-                    required
-                ></textarea>
-            </label>
-            <br />
-            <button type="submit">批量解析并导入</button>
-        </form>
-        <p>
-            已支持：
-            <br />
-            1) <strong>人名: 内容</strong> / <strong>人名：内容</strong>
-            <br />
-            2) 微信常见复制样式：<strong>人名 时间</strong> 下一行是内容
-            <br />
-            3) JSON（list/dict）字段：message/content/text + recommender_name/sender/name + recommend_ts/time/ts
-            <br />
-            4) CSV（含表头）字段：message/content/text + recommender_name/sender/name + recommend_ts/time/ts
-        </p>
-    </section>
+    <!-- Input Forms -->
+    <div class="input-grid">
 
-    <section>
-        <h2>资讯输入（RAG资料）</h2>
-        <form action="/manual/research" method="post">
-            <label>
-                录入人
-                <input name="operator_name" value="研究员" />
-            </label>
-            <br />
-            <label>
-                粘贴资讯/研报/观点（可多行）
-                <br />
-                <textarea
-                    name="research_text"
-                    rows="8"
-                    cols="120"
-                    placeholder="示例：宏观观察：资金偏防御，银行板块相对强势，暂无明确个股推荐"
-                    required
-                ></textarea>
-            </label>
-            <br />
-            <button type="submit">保存为资讯资料</button>
-        </form>
-    </section>
+        <!-- Stock Message Input -->
+        <div class="card">
+            <div class="section-header">
+                <div class="section-title">
+                    <span class="dot"></span>股票消息批量导入
+                </div>
+            </div>
+            <form action="/manual/import" method="post">
+                <div class="form-group">
+                    <label class="form-label" for="default_recommender_name">默认荐股人（文本中无人名时使用）</label>
+                    <input
+                        id="default_recommender_name"
+                        class="form-input"
+                        name="default_recommender_name"
+                        value="群友"
+                    />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="raw_text">粘贴消息文本（支持多种格式）</label>
+                    <textarea
+                        id="raw_text"
+                        class="form-textarea"
+                        name="raw_text"
+                        rows="10"
+                        placeholder="示例1：张三：600519 看好，逻辑是高端白酒复苏&#10;示例2：李四 2026-03-01 09:31&#10;000001 推荐，逻辑是估值修复&#10;示例3：[{&quot;sender&quot;:&quot;王五&quot;,&quot;content&quot;:&quot;300750 看好&quot;,&quot;time&quot;:&quot;2026-03-01 10:20&quot;}]&#10;示例4：CSV头 message,recommender_name,recommend_ts"
+                        required
+                    ></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">⚡ 批量解析并导入</button>
+            </form>
+            <div class="format-hint">
+                <strong>支持格式：</strong><br>
+                1) <strong>人名: 内容</strong> / <strong>人名：内容</strong><br>
+                2) 微信样式：<strong>人名 时间</strong>（下一行为内容）<br>
+                3) JSON 字段：message/content/text · sender/name · time/ts<br>
+                4) CSV（含表头）：message/content/text · sender/name · time/ts
+            </div>
+        </div>
 
-    <section>
-        <h2>股票池跟踪视图（按首次接收）</h2>
-        <table border="1" cellspacing="0" cellpadding="6">
-            <thead>
-                <tr>
-                    <th>股票代码</th>
-                    <th>股票名称</th>
-                    <th>荐股人</th>
-                    <th>首次接收时间</th>
-                    <th>最新评分</th>
-                    <th>最新收益率(%)</th>
-                    <th>最新评估日期</th>
-                    <th>状态</th>
-                    <th>推荐逻辑</th>
-                    <th>最新跟踪分析</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in tracking_rows %}
-                <tr>
-                    <td>{{ row.stock_code }}</td>
-                    <td>{{ row.stock_name or '-' }}</td>
-                    <td>{{ row.recommender_name }}</td>
-                    <td>{{ row.first_seen }}</td>
-                    <td>{{ "%.1f"|format(row.latest_score) }}</td>
-                    <td>{{ "%.2f"|format(row.latest_pnl) }}</td>
-                    <td>{{ row.latest_date or '-' }}</td>
-                    <td>{{ row.status }}</td>
-                    <td>{{ row.logic }}</td>
-                    <td>{{ row.latest_notes or '-' }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="10">暂无数据</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </section>
+        <!-- Research Input -->
+        <div class="card">
+            <div class="section-header">
+                <div class="section-title">
+                    <span class="dot"></span>资讯录入（RAG 知识库）
+                </div>
+            </div>
+            <form action="/manual/research" method="post">
+                <div class="form-group">
+                    <label class="form-label" for="operator_name">录入人</label>
+                    <input id="operator_name" class="form-input" name="operator_name" value="研究员" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="research_text">粘贴资讯 / 研报 / 宏观观点</label>
+                    <textarea
+                        id="research_text"
+                        class="form-textarea"
+                        name="research_text"
+                        rows="10"
+                        placeholder="示例：宏观观察：资金偏防御，银行板块相对强势，暂无明确个股推荐"
+                        required
+                    ></textarea>
+                </div>
+                <button type="submit" class="btn btn-secondary">💾 保存为资讯资料</button>
+            </form>
+        </div>
 
-    <section>
-        <h2>每日迭代跟踪记录（最新500条）</h2>
-        <table border="1" cellspacing="0" cellpadding="6">
-            <thead>
-                <tr>
-                    <th>日期</th>
-                    <th>股票代码</th>
-                    <th>股票名称</th>
-                    <th>荐股人</th>
-                    <th>评分</th>
-                    <th>收益率(%)</th>
-                    <th>原始逻辑</th>
-                    <th>当日分析</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in daily_records %}
-                <tr>
-                    <td>{{ row.date }}</td>
-                    <td>{{ row.stock_code }}</td>
-                    <td>{{ row.stock_name or '-' }}</td>
-                    <td>{{ row.recommender_name }}</td>
-                    <td>{{ "%.1f"|format(row.evaluation_score) }}</td>
-                    <td>{{ "%.2f"|format(row.pnl_percent) }}</td>
-                    <td>{{ row.logic }}</td>
-                    <td>{{ row.daily_notes }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="8">暂无日迭代记录</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </section>
+    </div>
+
+    <!-- Stock Pool Tracking -->
+    <div class="section">
+        <div class="section-header">
+            <div class="section-title">
+                <span class="dot"></span>股票池跟踪视图
+            </div>
+            <span class="section-badge">按首次接收时间排序 · 最多显示 200 条</span>
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>股票代码</th>
+                        <th>股票名称</th>
+                        <th>荐股人</th>
+                        <th>首次接收时间</th>
+                        <th>最新评分</th>
+                        <th>最新收益率</th>
+                        <th>最新评估日期</th>
+                        <th>状态</th>
+                        <th>推荐逻辑</th>
+                        <th>最新跟踪分析</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in tracking_rows %}
+                    <tr>
+                        <td class="nowrap"><span class="stock-code">{{ row.stock_code }}</span></td>
+                        <td class="nowrap">{{ row.stock_name or '-' }}</td>
+                        <td class="nowrap">{{ row.recommender_name }}</td>
+                        <td class="nowrap">{{ row.first_seen }}</td>
+                        <td class="nowrap">
+                            {% set s = row.latest_score %}
+                            {% if s >= 7 %}
+                                <span class="score-badge score-high">{{ "%.1f"|format(s) }}</span>
+                            {% elif s >= 4 %}
+                                <span class="score-badge score-mid">{{ "%.1f"|format(s) }}</span>
+                            {% else %}
+                                <span class="score-badge score-low">{{ "%.1f"|format(s) }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="nowrap">
+                            {% set p = row.latest_pnl %}
+                            {% if p > 0 %}
+                                <span class="pnl-pos">+{{ "%.2f"|format(p) }}%</span>
+                            {% elif p < 0 %}
+                                <span class="pnl-neg">{{ "%.2f"|format(p) }}%</span>
+                            {% else %}
+                                <span class="pnl-zero">{{ "%.2f"|format(p) }}%</span>
+                            {% endif %}
+                        </td>
+                        <td class="nowrap">{{ row.latest_date or '-' }}</td>
+                        <td class="nowrap">
+                            {% set st = row.status | lower %}
+                            {% if 'active' in st or '持仓' in st or '跟踪' in st %}
+                                <span class="status-badge status-active">{{ row.status }}</span>
+                            {% elif 'watch' in st or '观察' in st %}
+                                <span class="status-badge status-watching">{{ row.status }}</span>
+                            {% elif 'close' in st or '清仓' in st or '止损' in st %}
+                                <span class="status-badge status-closed">{{ row.status }}</span>
+                            {% else %}
+                                <span class="status-badge status-default">{{ row.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="logic-cell" title="{{ row.logic }}">{{ row.logic }}</td>
+                        <td class="notes-cell" title="{{ row.latest_notes or '-' }}">{{ row.latest_notes or '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr class="no-data">
+                        <td colspan="10">📭 暂无数据，请先导入股票推荐消息</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Daily Records -->
+    <div class="section">
+        <div class="section-header">
+            <div class="section-title">
+                <span class="dot"></span>每日迭代跟踪记录
+            </div>
+            <span class="section-badge">最新 500 条</span>
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>日期</th>
+                        <th>股票代码</th>
+                        <th>股票名称</th>
+                        <th>荐股人</th>
+                        <th>评分</th>
+                        <th>收益率</th>
+                        <th>原始逻辑</th>
+                        <th>当日分析</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in daily_records %}
+                    <tr>
+                        <td class="nowrap">{{ row.date }}</td>
+                        <td class="nowrap"><span class="stock-code">{{ row.stock_code }}</span></td>
+                        <td class="nowrap">{{ row.stock_name or '-' }}</td>
+                        <td class="nowrap">{{ row.recommender_name }}</td>
+                        <td class="nowrap">
+                            {% set s = row.evaluation_score %}
+                            {% if s >= 7 %}
+                                <span class="score-badge score-high">{{ "%.1f"|format(s) }}</span>
+                            {% elif s >= 4 %}
+                                <span class="score-badge score-mid">{{ "%.1f"|format(s) }}</span>
+                            {% else %}
+                                <span class="score-badge score-low">{{ "%.1f"|format(s) }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="nowrap">
+                            {% set p = row.pnl_percent %}
+                            {% if p > 0 %}
+                                <span class="pnl-pos">+{{ "%.2f"|format(p) }}%</span>
+                            {% elif p < 0 %}
+                                <span class="pnl-neg">{{ "%.2f"|format(p) }}%</span>
+                            {% else %}
+                                <span class="pnl-zero">{{ "%.2f"|format(p) }}%</span>
+                            {% endif %}
+                        </td>
+                        <td class="logic-cell" title="{{ row.logic }}">{{ row.logic }}</td>
+                        <td class="notes-cell" title="{{ row.daily_notes }}">{{ row.daily_notes }}</td>
+                    </tr>
+                    {% else %}
+                    <tr class="no-data">
+                        <td colspan="8">📭 暂无日迭代记录</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // Live clock
+    function updateClock() {
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        document.getElementById('nav-clock').textContent =
+            `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ` +
+            `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+</script>
 </body>
 </html>
