@@ -105,3 +105,52 @@ class AlertSubscription(Base):
     subscriber: Mapped[str] = mapped_column(String(64), index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class NewsDiscoveryCandidate(Base):
+    __tablename__ = "news_discovery_candidates"
+    __table_args__ = (
+        UniqueConstraint("stock_code", "headline", "source_url", name="uq_news_candidate_unique"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    stock_code: Mapped[str] = mapped_column(String(16), index=True)
+    stock_name: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    headline: Mapped[str] = mapped_column(String(255))
+    summary: Mapped[str] = mapped_column(Text, default="", server_default="")
+    source_site: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    source_url: Mapped[str] = mapped_column(String(500), default="", server_default="")
+    event_type: Mapped[str] = mapped_column(String(64), default="generic", server_default="generic")
+    discovery_score: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    status: Mapped[str] = mapped_column(String(32), default="candidate", server_default="candidate")
+    discovered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    promoted_recommendation_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("recommendations.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class StockPrediction(Base):
+    __tablename__ = "stock_predictions"
+    __table_args__ = (
+        UniqueConstraint("stock_code", "prediction_date", name="uq_stock_prediction_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    stock_code: Mapped[str] = mapped_column(String(16), index=True)
+    stock_name: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    prediction_date: Mapped[date] = mapped_column(Date, index=True)
+    horizon_days: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    direction: Mapped[str] = mapped_column(String(16), default="sideways", server_default="sideways")
+    confidence: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    thesis: Mapped[str] = mapped_column(Text, default="", server_default="")
+    invalidation_conditions: Mapped[str] = mapped_column(Text, default="", server_default="")
+    risk_flags: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
+    evidence: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
+    predicted_by: Mapped[str] = mapped_column(String(64), default="llm", server_default="llm")
+    actual_pnl_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    review_result: Mapped[str] = mapped_column(String(32), default="pending", server_default="pending")
+    review_notes: Mapped[str] = mapped_column(Text, default="", server_default="")
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

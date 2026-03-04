@@ -27,6 +27,18 @@ class MarketSnapshot:
     liquidity_score: float
 
 
+@dataclass
+class NewsDiscoveryItem:
+    stock_code: str
+    stock_name: str
+    headline: str
+    summary: str
+    source_site: str
+    source_url: str
+    event_type: str
+    discovery_score: float
+
+
 class MarketDataProvider:
     def health_check(self) -> bool:
         return True
@@ -177,6 +189,9 @@ class NewsDataProvider:
     def validate_recommendation_logic(self, stock_code: str, logic_text: str, trading_date: date) -> bool:
         raise NotImplementedError
 
+    def discover_candidate_stocks(self, trading_date: date, limit: int = 30) -> list[NewsDiscoveryItem]:
+        return []
+
 
 class MockNewsDataProvider(NewsDataProvider):
     def validate_recommendation_logic(self, stock_code: str, logic_text: str, trading_date: date) -> bool:
@@ -271,6 +286,12 @@ class SiteWhitelistNewsDataProvider(NewsDataProvider):
         if not self.sites:
             self.sites = list(self.DEFAULT_SITES)
         self.timeout = timeout
+        self._event_keywords: dict[str, tuple[str, ...]] = {
+            "earnings": ("业绩", "预增", "利润", "增长", "超预期", "年报", "季报"),
+            "order": ("订单", "中标", "签约", "项目", "合同"),
+            "policy": ("政策", "扶持", "指导意见", "规划", "改革"),
+            "risk": ("处罚", "问询", "减持", "亏损", "诉讼", "风险提示"),
+        }
 
     @staticmethod
     def _extract_keywords(logic_text: str) -> list[str]:
@@ -281,6 +302,50 @@ class SiteWhitelistNewsDataProvider(NewsDataProvider):
             if key not in dedup:
                 dedup.append(key)
         return dedup[:12]
+
+    @staticmethod
+    def _extract_stock_codes(text: str) -> list[str]:
+        matches = re.findall(r"\b((?:60|00|30|68)\d{4})\b", text or "")
+        dedup: list[str] = []
+        for code in matches:
+            if code not in dedup:
+                dedup.append(code)
+        return dedup
+
+    @staticmethod
+    def _extract_stock_name_candidates(text: str) -> list[str]:
+        names = re.findall(r"([\u4e00-\u9fa5]{2,10})(?:\(|（)?(?:60|00|30|68)\d{4}", text or "")
+        dedup: list[str] = []
+        for name in names:
+            if name not in dedup:
+                dedup.append(name)
+        return dedup
+
+    def _detect_event_type(self, text: str) -> str:
+        normalized = text or ""
+        best_type = "generic"
+        best_hits = 0
+        for event_type, words in self._event_keywords.items():
+            hits = sum(1 for word in words if word in normalized)
+            if hits > best_hits:
+                best_type = event_type
+                best_hits = hits
+        return best_type
+
+    def _score_discovery(self, title: str, content: str, event_type: str) -> float:
+        base = 0.8
+        text = f"{title} {content}"
+        code_hits = len(self._extract_stock_codes(text))
+        base += min(2.0, code_hits * 0.8)
+        name_hits = len(self._extract_stock_name_candidates(text))
+        base += min(1.5, name_hits * 0.5)
+        keyword_hits = 0
+        if event_type in self._event_keywords:
+            keyword_hits = sum(1 for word in self._event_keywords[event_type] if word in text)
+        base += min(2.2, keyword_hits * 0.6)
+        if event_type == "risk":
+            base -= 0.8
+        return round(max(0.0, min(5.0, base)), 2)
 
     def _fetch_site_text(self, url: str) -> str:
         response = requests.get(
@@ -409,6 +474,59 @@ class SiteWhitelistNewsDataProvider(NewsDataProvider):
                 weak_sites += 1
 
         return strong_sites >= 1 or (strong_sites == 0 and weak_sites >= 2)
+
+    def discover_candidate_stocks(self, trading_date: date, limit: int = 30) -> list[NewsDiscoveryItem]:
+        candidates: list[NewsDiscoveryItem] = []
+        seen: set[tuple[str, str]] = set()
+
+        for site in self.sites:
+            try:
+                homepage = self._fetch_site_text(site)
+            except Exception:
+                continue
+
+            links = self._extract_links(site, homepage)
+            for title, article_url in links[:20]:
+                text_blob = title
+                try:
+                    detail_text = self._fetch_site_text(article_url)
+                    text_blob = f"{title} {detail_text[:3000]}"
+                except Exception:
+                    detail_text = ""
+
+                stock_codes = self._extract_stock_codes(text_blob)
+                if not stock_codes:
+                    continue
+
+                event_type = self._detect_event_type(text_blob)
+                score = self._score_discovery(title=title, content=detail_text, event_type=event_type)
+                if score < 1.8:
+                    continue
+
+                name_candidates = self._extract_stock_name_candidates(text_blob)
+                stock_name = name_candidates[0] if name_candidates else ""
+
+                for code in stock_codes:
+                    fingerprint = (code, article_url)
+                    if fingerprint in seen:
+                        continue
+                    seen.add(fingerprint)
+                    candidates.append(
+                        NewsDiscoveryItem(
+                            stock_code=code,
+                            stock_name=stock_name,
+                            headline=title,
+                            summary=(detail_text or title)[:220],
+                            source_site=site,
+                            source_url=article_url,
+                            event_type=event_type,
+                            discovery_score=score,
+                        )
+                    )
+                    if len(candidates) >= limit:
+                        return sorted(candidates, key=lambda item: item.discovery_score, reverse=True)
+
+        return sorted(candidates, key=lambda item: item.discovery_score, reverse=True)[:limit]
 
 
 class WeChatConnector:

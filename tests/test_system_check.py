@@ -15,6 +15,7 @@ from app.notifier import AlertNotifier
 from app.providers import (
     MockMarketDataProvider,
     MockNewsDataProvider,
+    NewsDiscoveryItem,
     SiteWhitelistNewsDataProvider,
     build_market_provider,
     build_news_provider,
@@ -63,6 +64,31 @@ class SystemCheckTests(TestCase):
                 trading_date=date(2026, 3, 1),
             )
         self.assertTrue(result)
+
+    def test_sites_provider_discovery(self) -> None:
+        provider = SiteWhitelistNewsDataProvider(sites=["https://www.stcn.com"], timeout=3)
+        homepage_html = """
+        <html><body>
+        <a href="/article/1">兴森科技(002436)订单增长，景气改善</a>
+        </body></html>
+        """
+        article_html = """
+        <html><body>
+        兴森科技(002436)公告显示订单增长，项目持续兑现。
+        </body></html>
+        """
+
+        def fake_fetch(url: str) -> str:
+            if url.endswith("/article/1"):
+                return article_html
+            return homepage_html
+
+        with patch.object(provider, "_fetch_site_text", side_effect=fake_fetch):
+            items = provider.discover_candidate_stocks(trading_date=date(2026, 3, 1), limit=10)
+
+        self.assertGreaterEqual(len(items), 1)
+        self.assertEqual("002436", items[0].stock_code)
+        self.assertGreater(items[0].discovery_score, 1.8)
 
     def test_system_check_endpoint(self) -> None:
         engine = create_engine(

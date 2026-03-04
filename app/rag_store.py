@@ -45,32 +45,38 @@ class ResearchNoteStore:
                     continue
         return rows
 
-    def search(self, stock_code: str, stock_name: str, limit: int = 5) -> list[ResearchNote]:
+    def search_with_metadata(self, stock_code: str, stock_name: str, limit: int = 5) -> list[dict[str, Any]]:
         rows = self._read_all()
-        matches: list[ResearchNote] = []
+        matches: list[dict[str, Any]] = []
         for row in reversed(rows):
             text = str(row.get("text") or "")
             if stock_code and stock_code in text:
-                matches.append(
-                    ResearchNote(
-                        ts=datetime.fromisoformat(row.get("ts")),
-                        source=str(row.get("source") or ""),
-                        recommender_name=str(row.get("recommender_name") or ""),
-                        text=text,
-                    )
-                )
+                matches.append(row)
                 continue
             if stock_name and stock_name in text:
-                matches.append(
-                    ResearchNote(
-                        ts=datetime.fromisoformat(row.get("ts")),
-                        source=str(row.get("source") or ""),
-                        recommender_name=str(row.get("recommender_name") or ""),
-                        text=text,
-                    )
-                )
+                matches.append(row)
 
             if len(matches) >= limit:
                 break
 
         return matches[:limit]
+
+    def search(self, stock_code: str, stock_name: str, limit: int = 5) -> list[ResearchNote]:
+        matches = self.search_with_metadata(stock_code=stock_code, stock_name=stock_name, limit=limit)
+        result: list[ResearchNote] = []
+        for row in matches:
+            ts_raw = row.get("ts")
+            try:
+                ts = datetime.fromisoformat(str(ts_raw)) if ts_raw else datetime.min
+            except Exception:
+                ts = datetime.min
+            result.append(
+                ResearchNote(
+                    ts=ts,
+                    source=str(row.get("source") or ""),
+                    recommender_name=str(row.get("recommender_name") or ""),
+                    text=str(row.get("text") or ""),
+                )
+            )
+
+        return result[:limit]

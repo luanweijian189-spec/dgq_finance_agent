@@ -20,10 +20,21 @@ from dgq_finance_agent.evaluation import (
 )
 from dgq_finance_agent.message_parser import MessageParser
 
-from .models import AlertSubscription, DailyPerformance, Recommendation, Recommender, Stock
+from .models import (
+    AlertSubscription,
+    DailyPerformance,
+    NewsDiscoveryCandidate,
+    Recommendation,
+    Recommender,
+    StockPrediction,
+    Stock,
+)
 from .analysis_agent import StockAnalysisAgent
+from .decision_engine import LLMDecisionEngine
+from .memory import MemoryRetriever
 from .notifier import AlertNotifier
 from .providers import MarketDataProvider, NewsDataProvider
+from .providers import NewsDiscoveryItem
 from .rag_store import ResearchNoteStore
 from .stock_knowledge_store import StockKnowledgeStore
 
@@ -57,7 +68,10 @@ class FinanceAgentService:
         notifier: AlertNotifier,
         rag_store: Optional[ResearchNoteStore] = None,
         analysis_agent: Optional[StockAnalysisAgent] = None,
+        decision_engine: Optional[LLMDecisionEngine] = None,
         stock_knowledge_store: Optional[StockKnowledgeStore] = None,
+        memory_retriever: Optional[MemoryRetriever] = None,
+        memory_retrieval_limit: int = 8,
         daily_report_dir: str = "reports/daily",
     ) -> None:
         self.db = db
@@ -66,9 +80,42 @@ class FinanceAgentService:
         self.news_provider = news_provider
         self.notifier = notifier
         self.rag_store = rag_store or ResearchNoteStore("data/research_notes.jsonl")
-        self.analysis_agent = analysis_agent or StockAnalysisAgent(model_name="rule")
+        self.analysis_agent = analysis_agent or StockAnalysisAgent(model_name="gpt-5.3-codex")
+        self.decision_engine = decision_engine
         self.stock_knowledge_store = stock_knowledge_store or StockKnowledgeStore("data/stocks")
+        self.memory_retriever = memory_retriever or MemoryRetriever(
+            research_store=self.rag_store,
+            stock_knowledge_store=self.stock_knowledge_store,
+            default_limit=memory_retrieval_limit,
+        )
+        self.memory_retrieval_limit = max(int(memory_retrieval_limit), 3)
         self.daily_report_dir = daily_report_dir
+
+    @staticmethod
+    def _next_trade_day(day: date) -> date:
+        next_day = day
+        while True:
+            next_day = date.fromordinal(next_day.toordinal() + 1)
+            if next_day.weekday() < 5:
+                return next_day
+
+    @staticmethod
+    def _evaluate_direction_result(direction: str, pnl_percent: float) -> tuple[str, str]:
+        if direction == "up":
+            if pnl_percent > 0.8:
+                return "hit", "上涨预测命中"
+            if pnl_percent < -0.8:
+                return "miss", "上涨预测反向"
+            return "neutral", "上涨预测但实际震荡"
+        if direction == "down":
+            if pnl_percent < -0.8:
+                return "hit", "下跌预测命中"
+            if pnl_percent > 0.8:
+                return "miss", "下跌预测反向"
+            return "neutral", "下跌预测但实际震荡"
+        if abs(pnl_percent) <= 1.0:
+            return "hit", "震荡预测命中"
+        return "miss", "震荡预测偏差较大"
 
     def _find_stocks_in_text(self, text: str) -> list[Stock]:
         stocks: list[Stock] = []
@@ -95,6 +142,9 @@ class FinanceAgentService:
                 seen_ids.add(stock.id)
 
         return stocks
+
+    def _get_or_create_system_recommender(self) -> Recommender:
+        return self._get_or_create_recommender(name="系统新闻发现", wechat_id="system_news")
 
     def _parse_ts(self, value: str) -> Optional[datetime]:
         text = (value or "").strip()
@@ -370,11 +420,13 @@ class FinanceAgentService:
 
     def _build_stock_daily_analysis(self, recommendation: Recommendation, daily: Optional[DailyPerformance]) -> str:
         stock = recommendation.stock
-        rag_notes = self.rag_store.search(stock.stock_code, stock.stock_name, limit=5)
-        stock_file_notes = self.stock_knowledge_store.search(stock.stock_code, stock.stock_name, limit=6)
-        rag_context = [f"{item.ts.date()} {item.text[:80]}" for item in rag_notes]
-        rag_context.extend(stock_file_notes)
         logic = recommendation.extracted_logic or recommendation.original_message[:120]
+        rag_context = self.memory_retriever.retrieve_for_stock(
+            stock_code=stock.stock_code,
+            stock_name=stock.stock_name or "",
+            query_text=logic,
+            limit=self.memory_retrieval_limit,
+        )
 
         if daily is None:
             return self.analysis_agent.analyze(
@@ -396,6 +448,259 @@ class FinanceAgentService:
             max_drawdown=float(daily.max_drawdown),
             rag_context=rag_context,
         )
+
+    def _upsert_news_candidate(self, item: NewsDiscoveryItem) -> NewsDiscoveryCandidate:
+        existing = self.db.scalar(
+            select(NewsDiscoveryCandidate).where(
+                NewsDiscoveryCandidate.stock_code == item.stock_code,
+                NewsDiscoveryCandidate.headline == item.headline,
+                NewsDiscoveryCandidate.source_url == item.source_url,
+            )
+        )
+        now = datetime.utcnow()
+        if existing is None:
+            candidate = NewsDiscoveryCandidate(
+                stock_code=item.stock_code,
+                stock_name=item.stock_name,
+                headline=item.headline[:255],
+                summary=item.summary,
+                source_site=item.source_site,
+                source_url=item.source_url,
+                event_type=item.event_type,
+                discovery_score=float(item.discovery_score),
+                status="candidate",
+                discovered_at=now,
+                last_seen_at=now,
+            )
+            self.db.add(candidate)
+            self.db.flush()
+            return candidate
+
+        existing.last_seen_at = now
+        if float(item.discovery_score) > float(existing.discovery_score):
+            existing.discovery_score = float(item.discovery_score)
+        if item.summary and len(item.summary) > len(existing.summary or ""):
+            existing.summary = item.summary
+        if item.stock_name and not existing.stock_name:
+            existing.stock_name = item.stock_name
+        return existing
+
+    def run_news_discovery_scan(
+        self,
+        trading_date: Optional[date] = None,
+        min_score: float = 2.5,
+        auto_promote_min_score: float = 3.8,
+        auto_promote: bool = False,
+        limit: int = 40,
+    ) -> dict[str, Any]:
+        current_date = trading_date or date.today()
+        discovered = self.news_provider.discover_candidate_stocks(current_date, limit=limit)
+        saved = 0
+        promoted = 0
+        updated_tracking = 0
+
+        tracked_codes = {
+            code
+            for code in self.db.scalars(
+                select(Stock.stock_code)
+                .join(Recommendation, Recommendation.stock_id == Stock.id)
+                .where(Recommendation.status == "tracking")
+            ).all()
+        }
+
+        for item in discovered:
+            if float(item.discovery_score) < float(min_score):
+                continue
+
+            candidate = self._upsert_news_candidate(item)
+            saved += 1
+
+            if item.stock_code in tracked_codes:
+                self.stock_knowledge_store.append_entry(
+                    stock_code=item.stock_code,
+                    stock_name=item.stock_name,
+                    source="news_discovery",
+                    operator="system",
+                    entry_type="news",
+                    content=f"{item.headline} | {item.summary[:140]}",
+                )
+                updated_tracking += 1
+
+            should_promote = auto_promote and float(item.discovery_score) >= float(auto_promote_min_score)
+            if should_promote and candidate.status == "candidate":
+                recommendation = self.promote_news_candidate(candidate.id, operator="system", commit=False)
+                if recommendation is not None:
+                    promoted += 1
+
+        self.db.commit()
+        return {
+            "scan_date": current_date.isoformat(),
+            "raw_discovered": len(discovered),
+            "saved_candidates": saved,
+            "promoted": promoted,
+            "updated_tracking": updated_tracking,
+            "min_score": min_score,
+            "auto_promote": auto_promote,
+            "auto_promote_min_score": auto_promote_min_score,
+        }
+
+    def list_news_candidates(self, limit: int = 50, status: str = "candidate") -> list[dict[str, Any]]:
+        stmt = select(NewsDiscoveryCandidate)
+        if status and status != "all":
+            stmt = stmt.where(NewsDiscoveryCandidate.status == status)
+        rows = self.db.scalars(stmt.order_by(desc(NewsDiscoveryCandidate.last_seen_at)).limit(limit)).all()
+        return [
+            {
+                "id": row.id,
+                "stock_code": row.stock_code,
+                "stock_name": row.stock_name,
+                "headline": row.headline,
+                "summary": row.summary,
+                "source_site": row.source_site,
+                "source_url": row.source_url,
+                "event_type": row.event_type,
+                "discovery_score": float(row.discovery_score),
+                "status": row.status,
+                "discovered_at": row.discovered_at.isoformat() if row.discovered_at else "",
+                "last_seen_at": row.last_seen_at.isoformat() if row.last_seen_at else "",
+                "promoted_recommendation_id": row.promoted_recommendation_id,
+            }
+            for row in rows
+        ]
+
+    def promote_news_candidate(
+        self,
+        candidate_id: int,
+        operator: str = "system",
+        commit: bool = True,
+    ) -> Optional[Recommendation]:
+        candidate = self.db.get(NewsDiscoveryCandidate, candidate_id)
+        if candidate is None:
+            return None
+        if candidate.status == "promoted" and candidate.promoted_recommendation_id:
+            existing = self.db.get(Recommendation, candidate.promoted_recommendation_id)
+            return existing
+
+        stock = self._get_or_create_stock(candidate.stock_code, stock_name=candidate.stock_name)
+        recommender = self._get_or_create_system_recommender()
+        recommendation = Recommendation(
+            stock_id=stock.id,
+            recommender_id=recommender.id,
+            recommend_ts=datetime.utcnow(),
+            original_message=f"[新闻发现]{candidate.headline}",
+            extracted_logic=f"{candidate.event_type}:{candidate.summary[:180]}",
+            source="news_scan",
+            status="tracking",
+        )
+        self.db.add(recommendation)
+        self.db.flush()
+
+        candidate.status = "promoted"
+        candidate.promoted_recommendation_id = recommendation.id
+
+        self.stock_knowledge_store.append_entry(
+            stock_code=stock.stock_code,
+            stock_name=stock.stock_name or "",
+            source="news_discovery",
+            operator=operator,
+            entry_type="promotion",
+            content=f"{candidate.headline} | score={float(candidate.discovery_score):.2f}",
+        )
+
+        if commit:
+            self.db.commit()
+            self.db.refresh(recommendation)
+        return recommendation
+
+    def _latest_prediction(self, stock_code: str, on_or_before: Optional[date] = None) -> Optional[StockPrediction]:
+        stmt = select(StockPrediction).where(StockPrediction.stock_code == stock_code)
+        if on_or_before is not None:
+            stmt = stmt.where(StockPrediction.prediction_date <= on_or_before)
+        return self.db.scalar(stmt.order_by(desc(StockPrediction.prediction_date)).limit(1))
+
+    def _upsert_ai_prediction(
+        self,
+        recommendation: Recommendation,
+        daily: DailyPerformance,
+        prediction_date: date,
+    ) -> Optional[StockPrediction]:
+        if self.decision_engine is None:
+            return None
+
+        stock = recommendation.stock
+        logic = recommendation.extracted_logic or recommendation.original_message[:120]
+        memory_context = self.memory_retriever.retrieve_for_stock(
+            stock_code=stock.stock_code,
+            stock_name=stock.stock_name or "",
+            query_text=logic,
+            limit=self.memory_retrieval_limit,
+        )
+        decision = self.decision_engine.decide(
+            stock_code=stock.stock_code,
+            stock_name=stock.stock_name or "",
+            logic=logic,
+            score=float(daily.evaluation_score),
+            pnl_percent=float(daily.pnl_percent),
+            max_drawdown=float(daily.max_drawdown),
+            memory_context=memory_context,
+        )
+
+        prediction = self.db.scalar(
+            select(StockPrediction).where(
+                StockPrediction.stock_code == stock.stock_code,
+                StockPrediction.prediction_date == prediction_date,
+            )
+        )
+        if prediction is None:
+            prediction = StockPrediction(
+                stock_code=stock.stock_code,
+                stock_name=stock.stock_name or "",
+                prediction_date=prediction_date,
+            )
+            self.db.add(prediction)
+
+        prediction.stock_name = stock.stock_name or prediction.stock_name
+        prediction.horizon_days = decision.horizon_days
+        prediction.direction = decision.direction
+        prediction.confidence = decision.confidence
+        prediction.thesis = decision.thesis
+        prediction.invalidation_conditions = decision.invalidation_conditions
+        prediction.risk_flags = json.dumps(decision.risk_flags, ensure_ascii=False)
+        prediction.evidence = json.dumps(decision.evidence, ensure_ascii=False)
+        prediction.predicted_by = "llm" if "llm_unavailable" not in decision.risk_flags else "fallback"
+        prediction.updated_at = datetime.utcnow()
+        return prediction
+
+    def _review_predictions(self, current_date: date) -> None:
+        pending = self.db.scalars(
+            select(StockPrediction).where(
+                StockPrediction.prediction_date == current_date,
+                StockPrediction.review_result == "pending",
+            )
+        ).all()
+        if not pending:
+            return
+
+        for item in pending:
+            latest_daily = self.db.scalar(
+                select(DailyPerformance)
+                .join(Recommendation, Recommendation.id == DailyPerformance.recommendation_id)
+                .join(Stock, Stock.id == Recommendation.stock_id)
+                .where(
+                    Stock.stock_code == item.stock_code,
+                    DailyPerformance.date == current_date,
+                )
+                .order_by(desc(DailyPerformance.id))
+                .limit(1)
+            )
+            if latest_daily is None:
+                continue
+
+            result, notes = self._evaluate_direction_result(item.direction, float(latest_daily.pnl_percent))
+            item.actual_pnl_percent = float(latest_daily.pnl_percent)
+            item.review_result = result
+            item.review_notes = notes
+            item.reviewed_at = datetime.utcnow()
 
     def generate_daily_tracking_file(self, trading_date: date) -> str:
         report_dir = Path(self.daily_report_dir)
@@ -449,6 +754,7 @@ class FinanceAgentService:
                 )
 
                 ai_analysis = self._build_stock_daily_analysis(recommendation, daily)
+                prediction = self._latest_prediction(stock.stock_code)
                 correction = "建议继续跟踪原逻辑"
                 if daily and previous and daily.evaluation_score < previous.evaluation_score - 8:
                     correction = "评分下滑明显，建议修正逻辑假设或控制仓位"
@@ -469,6 +775,12 @@ class FinanceAgentService:
                             else "- 当日评分: 暂无（未进入行情评估）"
                         ),
                         f"- 智能分析: {ai_analysis}",
+                        (
+                            f"- AI次日预测: 方向={prediction.direction} | 置信度={prediction.confidence:.2f} | "
+                            f"目标日={prediction.prediction_date} | 失效条件={prediction.invalidation_conditions}"
+                            if prediction
+                            else "- AI次日预测: 暂无"
+                        ),
                         f"- 纠偏建议: {correction}",
                         "",
                     ]
@@ -737,6 +1049,7 @@ class FinanceAgentService:
 
     def evaluate_all_recommendations(self, trading_date: Optional[date] = None) -> int:
         current_date = trading_date or date.today()
+        self._review_predictions(current_date)
         recommendations = self.db.scalars(
             select(Recommendation).where(Recommendation.status == "tracking")
         ).all()
@@ -774,7 +1087,22 @@ class FinanceAgentService:
                 liquidity_score=snapshot.liquidity_score,
                 daily_date=current_date,
             )
+            latest_daily = self.db.scalar(
+                select(DailyPerformance)
+                .where(
+                    DailyPerformance.recommendation_id == recommendation.id,
+                    DailyPerformance.date == current_date,
+                )
+                .limit(1)
+            )
+            if latest_daily is not None:
+                self._upsert_ai_prediction(
+                    recommendation=recommendation,
+                    daily=latest_daily,
+                    prediction_date=self._next_trade_day(current_date),
+                )
             count += 1
+        self.db.commit()
         self.refresh_recommender_scores()
         self.generate_daily_tracking_file(current_date)
         self.push_daily_report(current_date)
@@ -972,10 +1300,18 @@ class FinanceAgentService:
         )
         if latest_daily is None:
             return f"{stock_code} 已在池中，但暂无日评估数据"
+
+        prediction = self._latest_prediction(stock_code)
+        prediction_text = "暂无AI预测"
+        if prediction is not None:
+            prediction_text = (
+                f"AI预测[{prediction.prediction_date}] {prediction.direction}"
+                f"(conf={prediction.confidence:.2f})"
+            )
         return (
             f"{stock_code} 最新评分 {latest_daily.evaluation_score:.1f}，"
             f"当前收益 {latest_daily.pnl_percent:.2f}% ，"
-            f"最大回撤 {latest_daily.max_drawdown:.2f}% 。"
+            f"最大回撤 {latest_daily.max_drawdown:.2f}% 。{prediction_text}"
         )
 
     def get_recommender_status(self, name: str) -> str:

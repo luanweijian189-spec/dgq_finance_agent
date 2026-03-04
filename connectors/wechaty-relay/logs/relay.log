@@ -7,3 +7,51 @@
 18:32:30 INFO scan status=3 qrcode=https://login.weixin.qq.com/l/YbZJrfbPAw==
 18:32:30 INFO scan scan this image url: https://api.qrserver.com/v1/create-qr-code/?size=420x420&data=https%3A%2F%2Flogin.weixin.qq.com%2Fl%2FYbZJrfbPAw%3D%3D
 18:35:52 ERR relay unhandledRejection: AssertionError: 400 != 400
+19:33:46 WARN PuppetWatchdogAgent start() reset() reason: {"data":"heartbeat@puppet-wechat4u:uuid","timeoutMilliseconds":60000}
+19:33:46 ERR relay uncaughtException: WatchdogAgent reset: lastFood: "{"data":"heartbeat@puppet-wechat4u:uuid","timeoutMilliseconds":60000}"
+uncaughtException GError: WatchdogAgent reset: lastFood: "{"data":"heartbeat@puppet-wechat4u:uuid","timeoutMilliseconds":60000}"
+    at Watchdog.reset (file:///Users/weijianluan/luan/finance/dgq_finance_agent/connectors/wechaty-relay/node_modules/wechaty-puppet/dist/esm/src/agents/watchdog-agent.js:45:39)
+    at Watchdog.emit (node:events:508:20)
+    at Timeout._onTimeout (file:///Users/weijianluan/luan/finance/dgq_finance_agent/connectors/wechaty-relay/node_modules/watchdog/dist/esm/src/watchdog.js:81:18)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7) {
+  code: 2,
+  details: 'Error: WatchdogAgent reset: lastFood: "{"data":"heartbeat@puppet-wechat4u:uuid","timeoutMilliseconds":60000}"\n' +
+    '    at Watchdog.reset (file:///Users/weijianluan/luan/finance/dgq_finance_agent/connectors/wechaty-relay/node_modules/wechaty-puppet/dist/esm/src/agents/watchdog-agent.js:45:39)\n' +
+    '    at Watchdog.emit (node:events:508:20)\n' +
+    '    at Timeout._onTimeout (file:///Users/weijianluan/luan/finance/dgq_finance_agent/connectors/wechaty-relay/node_modules/watchdog/dist/esm/src/watchdog.js:81:18)\n' +
+    '    at listOnTimeout (node:internal/timers:605:17)\n' +
+    '    at process.processTimers (node:internal/timers:541:7)'
+}
+23:45:16 WARN PuppetWatchdogAgent start() reset() reason: {"data":"heartbeat@puppet-wechat4u:uuid","timeoutMilliseconds":60000}
+23:45:16 ERR relay uncaughtException: WatchdogAgent reset: lastFood: "{"data":"heartbeat@puppet-wechat4u:uuid","timeoutMilliseconds":60000}"
+uncaughtException GError: WatchdogAgent reset: lastFood: "{"data":"heartbeat@puppet-wechat4u:uuid","timeoutMilliseconds":60000}"
+    at Watchdog.reset (file:///Users/weijianluan/luan/finance/dgq_finance_agent/connectors/wechaty-relay/node_modules/wechaty-puppet/dist/esm/src/agents/watchdog-agent.js:45:39)
+    at Watchdog.emit (node:events:508:20)
+    at Timeout._onTimeout (file:///Users/weijianluan/luan/finance/dgq_finance_agent/connectors/wechaty-relay/node_modules/watchdog/dist/esm/src/watchdog.js:81:18)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7) {
+  code: 2,
+  details: 'Error: WatchdogAgent reset: lastFood: "{"data":"heartbeat@puppet-wechat4u:uuid","timeoutMilliseconds":60000}"\n' +
+    '    at Watchdog.reset (file:///Users/weijianluan/luan/finance/dgq_finance_agent/connectors/wechaty-relay/node_modules/wechaty-puppet/dist/esm/src/agents/watchdog-agent.js:45:39)\n' +
+    '    at Watchdog.emit (node:events:508:20)\n' +
+    '    at Timeout._onTimeout (file:///Users/weijianluan/luan/finance/dgq_finance_agent/connectors/wechaty-relay/node_modules/watchdog/dist/esm/src/watchdog.js:81:18)\n' +
+    '    at listOnTimeout (node:internal/timers:605:17)\n' +
+    '    at process.processTimers (node:internal/timers:541:7)'
+}
+00:52:11 WARN PuppetWatchdogAgent start() reset() reason: {"data":"heartbeat@puppet-wechat4u:uuid","timeoutMilliseconds":60000}
+00:52:11 ERR relay uncaughtException: WatchdogAgent reset: lastFood: "{"data":"heartbeat@puppet-wechat4u:uuid","timeoutMilliseconds":60000}"
+uncaughtException GError: WatchdogAgent reset: lastFood: "{"data":"heartbeat@puppet-wechat4u:uuid","timeoutMilliseconds":60000}"
+    at Watchdog.reset (file:///Users/weijianluan/luan/finance/dgq_finance_agent/connectors/wechaty-relay/node_modules/wechaty-puppet/dist/esm/src/agents/watchdog-agent.js:45:39)
+    at Watchdog.emit (node:events:508:20)
+    at Timeout._onTimeout (file:///Users/weijianluan/luan/finance/dgq_finance_agent/connectors/wechaty-relay/node_modules/watchdog/dist/esm/src/watchdog.js:81:18)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7) {
+  code: 2,
+  details: 'Error: WatchdogAgent reset: lastFood: "{"data":"heartbeat@puppet-wechat4u:uuid","timeoutMilliseconds":60000}"\n' +
+    '    at Watchdog.reset (file:///Users/weijianluan/luan/finance/dgq_finance_agent/connectors/wechaty-relay/node_modules/wechaty-puppet/dist/esm/src/agents/watchdog-agent.js:45:39)\n' +
+    '    at Watchdog.emit (node:events:508:20)\n' +
+    '    at Timeout._onTimeout (file:///Users/weijianluan/luan/finance/dgq_finance_agent/connectors/wechaty-relay/node_modules/watchdog/dist/esm/src/watchdog.js:81:18)\n' +
+    '    at listOnTimeout (node:internal/timers:605:17)\n' +
+    '    at process.processTimers (node:internal/timers:541:7)'
+}

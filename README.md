@@ -103,6 +103,9 @@ docker compose up --build
 - `POST /api/alerts/subscribe`：订阅股票告警。
 - `POST /api/connectors/wechat/webhook`：Wechaty/OpenClaw 转发入口。
 - `GET /api/system/check`：数据库 + 行情源 +新闻源可用性检查。
+- `POST /api/news/scan`：执行新闻定时扫描（可手动触发）。
+- `GET /api/news/candidates`：查看候选新股队列。
+- `POST /api/news/candidates/promote`：将候选新股晋升到跟踪池。
 
 ## Wechaty / OpenClaw 对接方式
 外部连接器只需把消息转发到 webhook：
@@ -116,6 +119,80 @@ docker compose up --build
 ```
 
 目标地址：`POST /api/connectors/wechat/webhook`
+
+## OpenClaw（主流 Telegram 方案，无需二次开发）
+
+推荐采用 OpenClaw 官方 CLI + Telegram Bot 的标准链路：
+
+1. 在 Telegram 使用 `@BotFather` 创建机器人并获取 token。
+2. 把 token 保存到本机文件：
+
+```bash
+mkdir -p ~/.openclaw-dev
+printf '123456:ABC-YourTelegramBotToken' > ~/.openclaw-dev/telegram_bot_token.txt
+```
+
+3. 一键配置并验证：
+
+```bash
+bash scripts/setup_openclaw_telegram.sh
+```
+
+4. 给机器人发送 `/start` 后，触发一次回消息：
+
+```bash
+openclaw --dev agent --channel telegram --deliver -m '你好，回我一句已联通'
+```
+
+如需查看连接状态：
+
+```bash
+openclaw --dev channels status --probe
+```
+
+## Copilot 付费模型优先的半自动迭代闭环（推荐）
+
+如果你希望尽量使用 VS Code Copilot（GPT-5.3-Codex）而不是自建模型 API，可使用本仓库脚本：
+
+```bash
+bash scripts/copilot_hybrid_loop.sh init "你的任务目标"
+```
+
+脚本会生成：
+
+- `.copilot-loop/COPILOT_PROMPT.md`：首轮提示词（粘贴到 Copilot Chat）
+- `.copilot-loop/task.md`：任务目标
+
+每轮 Copilot 修改代码后执行：
+
+```bash
+bash scripts/copilot_hybrid_loop.sh check
+```
+
+也可以通过命令接口直接触发：
+
+- `/loop init 修复某个功能并自测`
+- `/loop check`
+- `/loop summary`
+- `/discover scan`（扫描新闻并更新候选）
+- `/discover list`（查看候选新股）
+- `/discover promote 12`（按ID晋升候选到跟踪池）
+
+脚本会自动：
+
+- 运行测试（默认 `python -m unittest discover -s tests -v`）
+- 读取失败日志
+- 生成下一轮给 Copilot 的修复提示词
+
+查看当前状态：
+
+```bash
+bash scripts/copilot_hybrid_loop.sh summary
+```
+
+> 可通过环境变量覆盖测试命令：
+>
+> `TEST_CMD="你的测试命令" bash scripts/copilot_hybrid_loop.sh check`
 
 ## 批量导入（推荐主通道）
 
@@ -204,8 +281,21 @@ message,recommender_name,recommend_ts
 ### 4) RAG + Agent 智能分析
 - 非荐股资讯会写入 `research_notes.jsonl`，按股票名/代码检索上下文。
 - 每日文件为每只股票生成“智能分析 + 纠偏建议”：
-   - 默认使用规则 Agent（`ANALYSIS_MODEL=rule`）
-   - 配置 `LLM_API_BASE + LLM_API_KEY + ANALYSIS_MODEL` 后可切换外部大模型。
+   - 默认采用 LLM API（OpenAI 兼容接口），通过环境变量无痛切换模型与供应商。
+   - 关键变量：`ANALYSIS_MODEL`、`LLM_API_BASE`、`LLM_API_KEY`、`LLM_API_CHAT_PATH`。
+   - 当 LLM 配置不可用时，会输出事实型摘要并提示检查 LLM 配置。
+
+### 5) 记忆系统（RAG）设计预留
+- 当前记忆后端：`jsonl`（研究总库 + 单股知识文件），已通过统一检索层聚合。
+- 检索配置：`MEMORY_BACKEND`、`MEMORY_RETRIEVAL_LIMIT`。
+- 扩展方向：向量库 / Embedding 检索可直接接入检索层，不影响业务接口。
+
+### 6) 新闻扫描与新股发现
+- 调度参数：`SCHEDULER_NEWS_SCAN_ENABLED`、`SCHEDULER_NEWS_SCAN_CRON`。
+- 候选阈值：`NEWS_DISCOVERY_MIN_SCORE`、`NEWS_AUTO_PROMOTE_MIN_SCORE`。
+- 扫描会同时完成两件事：
+   - 发现候选新股并进入队列；
+   - 对已跟踪股票写入增量新闻证据，支持实时更新结论。
 
 ### 6) 真实数据源建议（交付）
 - 行情：`MARKET_DATA_PROVIDER=baostock`（日线量价可用）

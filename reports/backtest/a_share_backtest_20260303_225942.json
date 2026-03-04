@@ -1,0 +1,228 @@
+{
+  "start": "2024-01-01",
+  "end": "2026-03-03",
+  "max_stocks": 220,
+  "total_iterations": 1152,
+  "top_results": [
+    {
+      "params": {
+        "momentum_window": 30,
+        "short_momentum_window": 10,
+        "volatility_window": 15,
+        "top_k": 10,
+        "hold_days": 10,
+        "weight_momentum": 1.0,
+        "weight_short": 0.7,
+        "weight_volatility": 0.8,
+        "weight_pullback": 0.5
+      },
+      "metrics": {
+        "cumulative_return": 0.026393440980191585,
+        "annualized_return": 0.08519401840206697,
+        "annualized_volatility": 0.37279817445537344,
+        "sharpe": 0.22852584652950145,
+        "max_drawdown": -0.3081409066889613,
+        "rebalance_count": 48,
+        "win_rate": 0.5625
+      }
+    },
+    {
+      "params": {
+        "momentum_window": 30,
+        "short_momentum_window": 10,
+        "volatility_window": 20,
+        "top_k": 10,
+        "hold_days": 10,
+        "weight_momentum": 1.3,
+        "weight_short": 0.7,
+        "weight_volatility": 0.8,
+        "weight_pullback": 0.8
+      },
+      "metrics": {
+        "cumulative_return": 0.0053022185638302854,
+        "annualized_return": 0.07414135804954669,
+        "annualized_volatility": 0.3751140995139859,
+        "sharpe": 0.19765015003596892,
+        "max_drawdown": -0.31747606423118524,
+        "rebalance_count": 48,
+        "win_rate": 0.5416666666666666
+      }
+    },
+    {
+      "params": {
+        "momentum_window": 30,
+        "short_momentum_window": 10,
+        "volatility_window": 15,
+        "top_k": 10,
+        "hold_days": 10,
+        "weight_momentum": 1.0,
+        "weight_short": 0.7,
+        "weight_volatility": 1.1,
+        "weight_pullback": 0.5
+      },
+      "metrics": {
+        "cumulative_return": 0.004719402525582561,
+        "annualized_return": 0.07238907524274785,
+        "annualized_volatility": 0.3704517830866924,
+        "sharpe": 0.19540754977499325,
+        "max_drawdown": -0.3081409066889613,
+        "rebalance_count": 48,
+        "win_rate": 0.5625
+      }
+    },
+    {
+      "params": {
+        "momentum_window": 30,
+        "short_momentum_window": 10,
+        "volatility_window": 20,
+        "top_k": 10,
+        "hold_days": 10,
+        "weight_momentum": 1.3,
+        "weight_short": 0.7,
+        "weight_volatility": 1.1,
+        "weight_pullback": 0.8
+      },
+      "metrics": {
+        "cumulative_return": -0.005133331780502903,
+        "annualized_return": 0.06893947908436315,
+        "annualized_volatility": 0.3767023634067493,
+        "sharpe": 0.18300782203992932,
+        "max_drawdown": -0.31747606423118524,
+        "rebalance_count": 48,
+        "win_rate": 0.5208333333333334
+      }
+    },
+    {
+      "params": {
+        "momentum_window": 30,
+        "short_momentum_window": 5,
+        "volatility_window": 20,
+        "top_k": 8,
+        "hold_days": 10,
+        "weight_momentum": 1.3,
+        "weight_short": 1.0,
+        "weight_volatility": 0.8,
+        "weight_pullback": 0.8
+      },
+      "metrics": {
+        "cumulative_return": -0.02014317082777617,
+        "annualized_return": 0.07176605683967074,
+        "annualized_volatility": 0.40283616534280053,
+        "sharpe": 0.17815197098453203,
+        "max_drawdown": -0.34935612591164333,
+        "rebalance_count": 48,
+        "win_rate": 0.5208333333333334
+      }
+    },
+    {
+      "params": {
+        "momentum_window": 30,
+        "short_momentum_window": 10,
+        "volatility_window": 15,
+        "top_k": 10,
+        "hold_days": 10,
+        "weight_momentum": 1.3,
+        "weight_short": 0.7,
+        "weight_volatility": 1.1,
+        "weight_pullback": 0.8
+      },
+      "metrics": {
+        "cumulative_return": -0.014889308326672235,
+        "annualized_return": 0.06344122810978647,
+        "annualized_volatility": 0.376761509358263,
+        "sharpe": 0.16838564060815492,
+        "max_drawdown": -0.3098801515809966,
+        "rebalance_count": 48,
+        "win_rate": 0.5416666666666666
+      }
+    },
+    {
+      "params": {
+        "momentum_window": 30,
+        "short_momentum_window": 10,
+        "volatility_window": 15,
+        "top_k": 10,
+        "hold_days": 10,
+        "weight_momentum": 1.3,
+        "weight_short": 1.0,
+        "weight_volatility": 1.1,
+        "weight_pullback": 0.5
+      },
+      "metrics": {
+        "cumulative_return": -0.013030692354691897,
+        "annualized_return": 0.06219429997625925,
+        "annualized_volatility": 0.369784340729242,
+        "sharpe": 0.1681907347769446,
+        "max_drawdown": -0.3149959291821698,
+        "rebalance_count": 48,
+        "win_rate": 0.5625
+      }
+    },
+    {
+      "params": {
+        "momentum_window": 30,
+        "short_momentum_window": 10,
+        "volatility_window": 15,
+        "top_k": 10,
+        "hold_days": 10,
+        "weight_momentum": 1.3,
+        "weight_short": 0.7,
+        "weight_volatility": 0.8,
+        "weight_pullback": 0.8
+      },
+      "metrics": {
+        "cumulative_return": -0.01509220186658422,
+        "annualized_return": 0.06267384505588991,
+        "annualized_volatility": 0.37507230520025514,
+        "sharpe": 0.16709803466408343,
+        "max_drawdown": -0.31692563100719073,
+        "rebalance_count": 48,
+        "win_rate": 0.5625
+      }
+    },
+    {
+      "params": {
+        "momentum_window": 30,
+        "short_momentum_window": 5,
+        "volatility_window": 15,
+        "top_k": 8,
+        "hold_days": 10,
+        "weight_momentum": 1.0,
+        "weight_short": 1.0,
+        "weight_volatility": 0.8,
+        "weight_pullback": 0.5
+      },
+      "metrics": {
+        "cumulative_return": -0.03696020210384077,
+        "annualized_return": 0.06617257449946501,
+        "annualized_volatility": 0.412073539022208,
+        "sharpe": 0.1605843817501195,
+        "max_drawdown": -0.35472385313152066,
+        "rebalance_count": 48,
+        "win_rate": 0.5
+      }
+    },
+    {
+      "params": {
+        "momentum_window": 30,
+        "short_momentum_window": 5,
+        "volatility_window": 20,
+        "top_k": 8,
+        "hold_days": 10,
+        "weight_momentum": 1.3,
+        "weight_short": 1.0,
+        "weight_volatility": 1.1,
+        "weight_pullback": 0.8
+      },
+      "metrics": {
+        "cumulative_return": -0.039487575347240345,
+        "annualized_return": 0.0606496895599129,
+        "annualized_volatility": 0.4027326051888923,
+        "sharpe": 0.15059542927115768,
+        "max_drawdown": -0.34935612591164333,
+        "rebalance_count": 48,
+        "win_rate": 0.5
+      }
+    }
+  ]
+}

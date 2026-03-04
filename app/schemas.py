@@ -73,6 +73,32 @@ class CommandResponse(BaseModel):
     result: str
 
 
+class NewsScanRequest(BaseModel):
+    min_score: float = 2.5
+    auto_promote: bool = False
+    auto_promote_min_score: float = 3.8
+    limit: int = 40
+
+
+class NewsScanResponse(BaseModel):
+    scan_date: str
+    raw_discovered: int
+    saved_candidates: int
+    promoted: int
+    updated_tracking: int
+    min_score: float
+    auto_promote: bool
+    auto_promote_min_score: float
+
+
+class NewsCandidatePromoteRequest(BaseModel):
+    candidate_id: int
+
+
+class NewsCandidateListResponse(BaseModel):
+    items: list[dict]
+
+
 class DashboardMetric(BaseModel):
     stock_pool_size: int
     recommender_count: int

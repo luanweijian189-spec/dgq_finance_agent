@@ -40,7 +40,7 @@ class StockKnowledgeStore:
         with file_path.open("a", encoding="utf-8") as fp:
             fp.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
-    def search(self, stock_code: str, stock_name: str = "", limit: int = 6) -> list[str]:
+    def search_entries(self, stock_code: str, stock_name: str = "", limit: int = 6) -> list[dict[str, Any]]:
         candidates = list(self.base_dir.glob(f"{stock_code}*.jsonl"))
         if not candidates and stock_name:
             candidates = list(self.base_dir.glob(f"*{stock_name}*.jsonl"))
@@ -58,13 +58,24 @@ class StockKnowledgeStore:
             except Exception:
                 continue
 
-        result: list[str] = []
+        result: list[dict[str, Any]] = []
         for line in reversed(merged_lines):
             try:
                 row = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            result.append(f"{row.get('ts', '')} {row.get('entry_type', '')} {row.get('content', '')}")
+            result.append(
+                {
+                    "ts": row.get("ts", ""),
+                    "entry_type": row.get("entry_type", ""),
+                    "source": row.get("source", ""),
+                    "content": row.get("content", ""),
+                }
+            )
             if len(result) >= limit:
                 break
         return result
+
+    def search(self, stock_code: str, stock_name: str = "", limit: int = 6) -> list[str]:
+        rows = self.search_entries(stock_code=stock_code, stock_name=stock_name, limit=limit)
+        return [f"{row.get('ts', '')} {row.get('entry_type', '')} {row.get('content', '')}" for row in rows]

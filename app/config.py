@@ -19,6 +19,8 @@ class Settings(BaseSettings):
 
     scheduler_enabled: bool = True
     scheduler_cron: str = "30 15 * * 1-5"
+    scheduler_news_scan_enabled: bool = True
+    scheduler_news_scan_cron: str = "*/20 9-15 * * 1-5"
 
     market_data_provider: str = "baostock"
     news_data_provider: str = "tushare"
@@ -28,16 +30,22 @@ class Settings(BaseSettings):
         "https://www.eastmoney.com,https://finance.sina.com.cn,https://www.stcn.com,https://www.cnstock.com"
     )
     news_site_timeout: int = 5
+    news_discovery_min_score: float = 2.5
+    news_auto_promote_min_score: float = 3.8
 
     alert_webhook_url: str = ""
 
     rag_store_path: str = "data/research_notes.jsonl"
     stock_knowledge_dir: str = "data/stocks"
     daily_report_dir: str = "reports/daily"
+    memory_backend: str = "jsonl"
+    memory_retrieval_limit: int = 8
 
-    analysis_model: str = "rule"
+    analysis_model: str = "gpt-5.3-codex"
     llm_api_base: str = ""
     llm_api_key: str = ""
+    llm_api_chat_path: str = "/chat/completions"
+    llm_api_timeout_seconds: int = 15
 
 
 @lru_cache(maxsize=1)

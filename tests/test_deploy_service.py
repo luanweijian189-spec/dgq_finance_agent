@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from subprocess import CompletedProcess
 from unittest import TestCase
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -10,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.agent import OpenClawCommandHandler
 from app.database import Base
 from app.notifier import AlertNotifier
-from app.providers import MockMarketDataProvider, MockNewsDataProvider
+from app.providers import MockMarketDataProvider, MockNewsDataProvider, NewsDiscoveryItem
 from app.services import FinanceAgentService
 
 
@@ -77,6 +79,34 @@ class DeployServiceTests(TestCase):
         alert_result = handler.handle("/alert on 600519", operator="u1")
         self.assertIn("已订阅", alert_result)
 
+    def test_loop_commands_dispatch(self) -> None:
+        handler = OpenClawCommandHandler(self.service)
+        with patch("app.agent.subprocess.run") as mocked_run:
+            mocked_run.return_value = CompletedProcess(
+                args=["bash", "scripts/copilot_hybrid_loop.sh", "summary"],
+                returncode=0,
+                stdout="loop summary ok\n",
+                stderr="",
+            )
+            result = handler.handle("/loop summary", operator="u1")
+            self.assertIn("loop summary ok", result)
+
+            init_result = handler.handle("/loop init 修复回归并自测", operator="u1")
+            self.assertIn("loop summary ok", init_result)
+            self.assertGreaterEqual(mocked_run.call_count, 2)
+
+    def test_loop_command_failure_message(self) -> None:
+        handler = OpenClawCommandHandler(self.service)
+        with patch("app.agent.subprocess.run") as mocked_run:
+            mocked_run.return_value = CompletedProcess(
+                args=["bash", "scripts/copilot_hybrid_loop.sh", "check"],
+                returncode=1,
+                stdout="",
+                stderr="boom",
+            )
+            result = handler.handle("/loop check", operator="u1")
+            self.assertIn("loop命令执行失败", result)
+
     def test_bulk_import_supports_multiple_formats_and_dedup(self) -> None:
         raw_text = """
 张三：600519 看好，逻辑是高端白酒复苏
@@ -138,3 +168,45 @@ class DeployServiceTests(TestCase):
         self.assertIn("股票池每日追踪 2026-03-01", content)
         self.assertIn("智能分析", content)
         self.assertIn("纠偏建议", content)
+
+    def test_discover_command_scan_and_promote(self) -> None:
+        handler = OpenClawCommandHandler(self.service)
+        with patch.object(self.service.news_provider, "discover_candidate_stocks") as mocked_discovery:
+            mocked_discovery.return_value = [
+                NewsDiscoveryItem(
+                    stock_code="002436",
+                    stock_name="兴森科技",
+                    headline="兴森科技(002436)订单增长",
+                    summary="订单增长且景气改善",
+                    source_site="https://www.stcn.com",
+                    source_url="https://www.stcn.com/article/1",
+                    event_type="order",
+                    discovery_score=4.2,
+                )
+            ]
+            result = handler.handle("/discover scan", operator="u1")
+            self.assertIn("扫描完成", result)
+
+        rows = self.service.list_news_candidates(limit=10, status="candidate")
+        self.assertEqual(1, len(rows))
+        promote_result = handler.handle(f"/discover promote {rows[0]['id']}", operator="u1")
+        self.assertIn("已晋升到跟踪池", promote_result)
+
+    def test_news_scan_api(self) -> None:
+        with patch.object(self.service.news_provider, "discover_candidate_stocks") as mocked_discovery:
+            mocked_discovery.return_value = [
+                NewsDiscoveryItem(
+                    stock_code="300750",
+                    stock_name="宁德时代",
+                    headline="宁德时代(300750)新签大单",
+                    summary="新签订单",
+                    source_site="https://finance.sina.com.cn",
+                    source_url="https://finance.sina.com.cn/article/2",
+                    event_type="order",
+                    discovery_score=3.9,
+                )
+            ]
+            payload = self.service.run_news_discovery_scan(min_score=2.5, auto_promote=False, limit=20)
+            self.assertEqual(1, payload["saved_candidates"])
+            items = self.service.list_news_candidates(limit=10, status="candidate")
+            self.assertGreaterEqual(len(items), 1)

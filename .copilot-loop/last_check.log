@@ -1,0 +1,22 @@
+/Users/weijianluan/luan/finance/dgq_finance_agent/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+test_recommender_reliability (test_agent_flow.EvaluationTests) ... ok
+test_stock_quality_score_improves_with_better_metrics (test_agent_flow.EvaluationTests) ... ok
+test_parse_recommendation_message (test_agent_flow.MessageParserTests) ... ok
+test_end_to_end_agent_commands (test_agent_flow.ServiceAndAgentTests) ... ok
+test_alert_subscription_command (test_deploy_service.DeployServiceTests) ... ok
+test_bulk_import_csv (test_deploy_service.DeployServiceTests) ... ok
+test_bulk_import_long_message_name_only (test_deploy_service.DeployServiceTests) ... ok
+test_bulk_import_supports_multiple_formats_and_dedup (test_deploy_service.DeployServiceTests) ... ok
+test_full_flow_with_command_and_daily_evaluation (test_deploy_service.DeployServiceTests) ... ok
+test_generate_daily_tracking_file (test_deploy_service.DeployServiceTests) ... ok
+test_non_recommendation_text_saved_as_rag (test_deploy_service.DeployServiceTests) ... ok
+test_provider_factory (test_system_check.SystemCheckTests) ... ok
+test_research_ingest_endpoint (test_system_check.SystemCheckTests) ... ok
+test_sites_provider_semantic_match (test_system_check.SystemCheckTests) ... ok
+test_system_check_endpoint (test_system_check.SystemCheckTests) ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 0.265s
+
+OK

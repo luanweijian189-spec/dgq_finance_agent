@@ -18,6 +18,21 @@ def _job_run_daily_evaluation(service_factory):
         session.close()
 
 
+def _job_run_news_scan(service_factory, min_score: float, auto_promote: bool, auto_promote_min_score: float):
+    session = SessionLocal()
+    try:
+        service: FinanceAgentService = service_factory(session)
+        service.run_news_discovery_scan(
+            trading_date=date.today(),
+            min_score=min_score,
+            auto_promote=auto_promote,
+            auto_promote_min_score=auto_promote_min_score,
+            limit=40,
+        )
+    finally:
+        session.close()
+
+
 def create_scheduler(cron_expr: str, service_factory) -> BackgroundScheduler:
     scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
     scheduler.add_job(
@@ -28,3 +43,25 @@ def create_scheduler(cron_expr: str, service_factory) -> BackgroundScheduler:
         replace_existing=True,
     )
     return scheduler
+
+
+def add_news_scan_job(
+    scheduler: BackgroundScheduler,
+    cron_expr: str,
+    service_factory,
+    min_score: float,
+    auto_promote: bool,
+    auto_promote_min_score: float,
+) -> None:
+    scheduler.add_job(
+        _job_run_news_scan,
+        trigger=CronTrigger.from_crontab(cron_expr),
+        kwargs={
+            "service_factory": service_factory,
+            "min_score": min_score,
+            "auto_promote": auto_promote,
+            "auto_promote_min_score": auto_promote_min_score,
+        },
+        id="news_scan",
+        replace_existing=True,
+    )

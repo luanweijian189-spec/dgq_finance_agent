@@ -11,6 +11,8 @@ from .agent import OpenClawCommandHandler
 from .analysis_agent import StockAnalysisAgent
 from .config import get_settings
 from .database import get_db_session
+from .decision_engine import LLMDecisionEngine
+from .memory import MemoryRetriever
 from .notifier import StdoutNotifier, WebhookNotifier
 from .providers import build_market_provider, build_news_provider
 from .rag_store import ResearchNoteStore
@@ -24,9 +26,13 @@ from .schemas import (
     DailyEvaluationRequest,
     IngestMessageRequest,
     ManualRecommendationRequest,
+    NewsCandidateListResponse,
+    NewsCandidatePromoteRequest,
+    NewsScanRequest,
+    NewsScanResponse,
     ResearchTextRequest,
 )
-from .scheduler import create_scheduler
+from .scheduler import add_news_scan_job, create_scheduler
 from .services import FinanceAgentService
 
 
@@ -41,6 +47,8 @@ def _build_notifier(settings):
 
 def get_service(db: Session = Depends(get_db_session)) -> FinanceAgentService:
     settings = get_settings()
+    rag_store = ResearchNoteStore(settings.rag_store_path)
+    stock_knowledge_store = StockKnowledgeStore(settings.stock_knowledge_dir)
     return FinanceAgentService(
         db=db,
         market_provider=build_market_provider(settings.market_data_provider),
@@ -52,19 +60,36 @@ def get_service(db: Session = Depends(get_db_session)) -> FinanceAgentService:
             news_site_timeout=settings.news_site_timeout,
         ),
         notifier=_build_notifier(settings),
-        rag_store=ResearchNoteStore(settings.rag_store_path),
+        rag_store=rag_store,
         analysis_agent=StockAnalysisAgent(
             model_name=settings.analysis_model,
             api_key=settings.llm_api_key,
             api_base=settings.llm_api_base,
+            chat_path=settings.llm_api_chat_path,
+            timeout_seconds=settings.llm_api_timeout_seconds,
         ),
-        stock_knowledge_store=StockKnowledgeStore(settings.stock_knowledge_dir),
+        decision_engine=LLMDecisionEngine(
+            model_name=settings.analysis_model,
+            api_key=settings.llm_api_key,
+            api_base=settings.llm_api_base,
+            chat_path=settings.llm_api_chat_path,
+            timeout_seconds=settings.llm_api_timeout_seconds,
+        ),
+        stock_knowledge_store=stock_knowledge_store,
+        memory_retriever=MemoryRetriever(
+            research_store=rag_store,
+            stock_knowledge_store=stock_knowledge_store,
+            default_limit=settings.memory_retrieval_limit,
+        ),
+        memory_retrieval_limit=settings.memory_retrieval_limit,
         daily_report_dir=settings.daily_report_dir,
     )
 
 
 def build_service_for_scheduler(db: Session) -> FinanceAgentService:
     settings = get_settings()
+    rag_store = ResearchNoteStore(settings.rag_store_path)
+    stock_knowledge_store = StockKnowledgeStore(settings.stock_knowledge_dir)
     return FinanceAgentService(
         db=db,
         market_provider=build_market_provider(settings.market_data_provider),
@@ -76,13 +101,28 @@ def build_service_for_scheduler(db: Session) -> FinanceAgentService:
             news_site_timeout=settings.news_site_timeout,
         ),
         notifier=_build_notifier(settings),
-        rag_store=ResearchNoteStore(settings.rag_store_path),
+        rag_store=rag_store,
         analysis_agent=StockAnalysisAgent(
             model_name=settings.analysis_model,
             api_key=settings.llm_api_key,
             api_base=settings.llm_api_base,
+            chat_path=settings.llm_api_chat_path,
+            timeout_seconds=settings.llm_api_timeout_seconds,
         ),
-        stock_knowledge_store=StockKnowledgeStore(settings.stock_knowledge_dir),
+        decision_engine=LLMDecisionEngine(
+            model_name=settings.analysis_model,
+            api_key=settings.llm_api_key,
+            api_base=settings.llm_api_base,
+            chat_path=settings.llm_api_chat_path,
+            timeout_seconds=settings.llm_api_timeout_seconds,
+        ),
+        stock_knowledge_store=stock_knowledge_store,
+        memory_retriever=MemoryRetriever(
+            research_store=rag_store,
+            stock_knowledge_store=stock_knowledge_store,
+            default_limit=settings.memory_retrieval_limit,
+        ),
+        memory_retrieval_limit=settings.memory_retrieval_limit,
         daily_report_dir=settings.daily_report_dir,
     )
 
@@ -112,6 +152,10 @@ def create_app() -> FastAPI:
             "news_provider": news_ok,
             "market_provider_name": settings.market_data_provider,
             "news_provider_name": settings.news_data_provider,
+            "analysis_model": settings.analysis_model,
+            "llm_ready": bool(settings.llm_api_base and settings.llm_api_key and settings.analysis_model),
+            "memory_backend": settings.memory_backend,
+            "memory_retrieval_limit": settings.memory_retrieval_limit,
         }
 
     @app.post("/api/messages/ingest")
@@ -189,6 +233,33 @@ def create_app() -> FastAPI:
         handler = OpenClawCommandHandler(service)
         result = handler.handle(payload.command, operator="api_user")
         return CommandResponse(result=result)
+
+    @app.post("/api/news/scan", response_model=NewsScanResponse)
+    def scan_news(payload: NewsScanRequest, service: FinanceAgentService = Depends(get_service)):
+        result = service.run_news_discovery_scan(
+            trading_date=date.today(),
+            min_score=payload.min_score,
+            auto_promote=payload.auto_promote,
+            auto_promote_min_score=payload.auto_promote_min_score,
+            limit=payload.limit,
+        )
+        return NewsScanResponse(**result)
+
+    @app.get("/api/news/candidates", response_model=NewsCandidateListResponse)
+    def list_news_candidates(
+        status: str = "candidate",
+        limit: int = 50,
+        service: FinanceAgentService = Depends(get_service),
+    ):
+        items = service.list_news_candidates(limit=limit, status=status)
+        return NewsCandidateListResponse(items=items)
+
+    @app.post("/api/news/candidates/promote")
+    def promote_news_candidate(payload: NewsCandidatePromoteRequest, service: FinanceAgentService = Depends(get_service)):
+        recommendation = service.promote_news_candidate(payload.candidate_id, operator="api_user")
+        if recommendation is None:
+            return {"ok": False, "message": "candidate not found"}
+        return {"ok": True, "recommendation_id": recommendation.id, "stock_code": recommendation.stock.stock_code}
 
     @app.post("/api/alerts/subscribe")
     def subscribe(payload: AlertRequest, service: FinanceAgentService = Depends(get_service)):
@@ -305,6 +376,15 @@ def create_app() -> FastAPI:
 
     if settings.scheduler_enabled:
         scheduler = create_scheduler(settings.scheduler_cron, build_service_for_scheduler)
+        if settings.scheduler_news_scan_enabled:
+            add_news_scan_job(
+                scheduler=scheduler,
+                cron_expr=settings.scheduler_news_scan_cron,
+                service_factory=build_service_for_scheduler,
+                min_score=settings.news_discovery_min_score,
+                auto_promote=False,
+                auto_promote_min_score=settings.news_auto_promote_min_score,
+            )
 
         @app.on_event("startup")
         def startup_event() -> None:
