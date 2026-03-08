@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
+import hashlib
+import importlib
+import json
+from pathlib import Path
 import re
+from time import monotonic, sleep
 from urllib.parse import urljoin, urlparse
 from typing import Optional
 
@@ -16,6 +21,7 @@ class ProviderError(RuntimeError):
 
 @dataclass
 class MarketSnapshot:
+    snapshot_date: date
     close_price: float
     high_price: float
     low_price: float
@@ -39,6 +45,29 @@ class NewsDiscoveryItem:
     discovery_score: float
 
 
+@dataclass
+class IntradayBar:
+    timestamp: str
+    open_price: float
+    close_price: float
+    high_price: float
+    low_price: float
+    volume: float
+    amount: float
+    amplitude: float = 0.0
+    change_percent: float = 0.0
+    change_amount: float = 0.0
+    turnover_rate: float = 0.0
+
+
+@dataclass
+class IntradayTrade:
+    timestamp: str
+    price: float
+    volume_lot: float
+    side: str = ""
+
+
 class MarketDataProvider:
     def health_check(self) -> bool:
         return True
@@ -46,13 +75,37 @@ class MarketDataProvider:
     def get_stock_name(self, stock_code: str) -> str:
         return ""
 
+    def search_stock_candidates(self, query: str, limit: int = 5) -> list[tuple[str, str]]:
+        return []
+
     def get_daily_snapshot(self, stock_code: str, trading_date: date) -> MarketSnapshot:
+        raise NotImplementedError
+
+
+class IntradayDataProvider:
+    def health_check(self) -> bool:
+        return True
+
+    def get_minute_bars(
+        self,
+        stock_code: str,
+        period: str = "1",
+        adjust: str = "",
+        start_datetime: Optional[datetime] = None,
+        end_datetime: Optional[datetime] = None,
+    ) -> tuple[list[IntradayBar], bool]:
+        raise NotImplementedError
+
+    def get_trade_ticks(self, stock_code: str) -> tuple[list[IntradayTrade], bool]:
         raise NotImplementedError
 
 
 class MockMarketDataProvider(MarketDataProvider):
     def get_stock_name(self, stock_code: str) -> str:
         return f"模拟股票{stock_code}"
+
+    def search_stock_candidates(self, query: str, limit: int = 5) -> list[tuple[str, str]]:
+        return []
 
     def get_daily_snapshot(self, stock_code: str, trading_date: date) -> MarketSnapshot:
         seed = (sum(ord(char) for char in stock_code) + trading_date.day) % 100
@@ -63,6 +116,7 @@ class MockMarketDataProvider(MarketDataProvider):
         max_drawdown = -float((seed % 12) + 1)
         sharpe_ratio = round((seed % 20) / 10.0 - 0.5, 2)
         return MarketSnapshot(
+            snapshot_date=trading_date,
             close_price=round(close_price, 2),
             high_price=round(high_price, 2),
             low_price=round(low_price, 2),
@@ -78,6 +132,7 @@ class MockMarketDataProvider(MarketDataProvider):
 class BaostockMarketDataProvider(MarketDataProvider):
     def __init__(self) -> None:
         self._logged_in = False
+        self._stock_catalog: Optional[list[tuple[str, str]]] = None
 
     def _ensure_login(self) -> None:
         if self._logged_in:
@@ -96,6 +151,13 @@ class BaostockMarketDataProvider(MarketDataProvider):
     def _to_bs_code(stock_code: str) -> str:
         prefix = "sh" if stock_code.startswith(("60", "68")) else "sz"
         return f"{prefix}.{stock_code}"
+
+    @staticmethod
+    def _to_plain_code(stock_code: str) -> str:
+        value = (stock_code or "").strip().lower()
+        if "." in value:
+            return value.split(".", 1)[1]
+        return value
 
     def health_check(self) -> bool:
         try:
@@ -117,6 +179,49 @@ class BaostockMarketDataProvider(MarketDataProvider):
         if len(rows[-1]) >= 2:
             return rows[-1][1]
         return ""
+
+    def _load_stock_catalog(self) -> list[tuple[str, str]]:
+        if self._stock_catalog is not None:
+            return self._stock_catalog
+
+        self._ensure_login()
+        import baostock as bs
+
+        as_of = date.today()
+        while as_of.weekday() >= 5:
+            as_of -= timedelta(days=1)
+
+        rs = bs.query_all_stock(as_of.isoformat())
+        rows: list[tuple[str, str]] = []
+        while rs.error_code == "0" and rs.next():
+            item = rs.get_row_data()
+            if len(item) < 3:
+                continue
+            code = self._to_plain_code(item[0])
+            name = (item[2] or "").strip()
+            if not code or not name:
+                continue
+            if not re.fullmatch(r"\d{6}", code):
+                continue
+            rows.append((code, name))
+        self._stock_catalog = rows
+        return rows
+
+    def search_stock_candidates(self, query: str, limit: int = 5) -> list[tuple[str, str]]:
+        keyword = (query or "").strip()
+        if not keyword:
+            return []
+
+        catalog = self._load_stock_catalog()
+        exact: list[tuple[str, str]] = []
+        partial: list[tuple[str, str]] = []
+        for code, name in catalog:
+            if name == keyword:
+                exact.append((code, name))
+            elif keyword in name:
+                partial.append((code, name))
+
+        return (exact + partial)[: max(limit, 1)]
 
     def get_daily_snapshot(self, stock_code: str, trading_date: date) -> MarketSnapshot:
         self._ensure_login()
@@ -151,7 +256,7 @@ class BaostockMarketDataProvider(MarketDataProvider):
         if not rows:
             raise ProviderError(f"baostock 未返回 {stock_code} 在 {trading_date} 及近14日的行情")
 
-        _, _open, high, low, close, volume, amount, pct_chg = rows[-1]
+        row_date, _open, high, low, close, volume, amount, pct_chg = rows[-1]
         close_price = float(close)
         high_price = float(high)
         low_price = float(low)
@@ -170,6 +275,7 @@ class BaostockMarketDataProvider(MarketDataProvider):
         sharpe_ratio = pnl_percent / max(abs(max_drawdown), 1.0)
 
         return MarketSnapshot(
+            snapshot_date=date.fromisoformat(row_date),
             close_price=close_price,
             high_price=high_price,
             low_price=low_price,
@@ -180,6 +286,504 @@ class BaostockMarketDataProvider(MarketDataProvider):
             elasticity_score=elasticity_score,
             liquidity_score=liquidity_score,
         )
+
+
+class AkshareIntradayDataProvider(IntradayDataProvider):
+    def __init__(
+        self,
+        cache_dir: str = "data/intraday",
+        request_interval_seconds: float = 1.2,
+        max_retries: int = 2,
+        provider_label: str = "AKShare",
+    ):
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.request_interval_seconds = max(request_interval_seconds, 0.0)
+        self.max_retries = max(max_retries, 0)
+        self._last_request_at = 0.0
+        self.provider_label = provider_label
+
+    @staticmethod
+    def _normalize_stock_code(stock_code: str) -> str:
+        normalized = re.sub(r"\D", "", stock_code or "")
+        if not re.fullmatch(r"\d{6}", normalized):
+            raise ProviderError(f"分时接口要求 6 位股票代码，收到: {stock_code}")
+        return normalized
+
+    @staticmethod
+    def _format_datetime(value: Optional[datetime]) -> str:
+        if value is None:
+            return ""
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+
+    @staticmethod
+    def _safe_text(record: dict, *keys: str) -> str:
+        for key in keys:
+            value = record.get(key)
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                return text
+        return ""
+
+    @staticmethod
+    def _safe_float(record: dict, *keys: str) -> float:
+        for key in keys:
+            value = record.get(key)
+            if value in (None, "", "-"):
+                continue
+            try:
+                return float(str(value).replace(",", ""))
+            except (TypeError, ValueError):
+                continue
+        return 0.0
+
+    def _rate_limit(self) -> None:
+        if self.request_interval_seconds <= 0:
+            return
+        elapsed = monotonic() - self._last_request_at
+        wait_seconds = self.request_interval_seconds - elapsed
+        if wait_seconds > 0:
+            sleep(wait_seconds)
+        self._last_request_at = monotonic()
+
+    def _cache_path(self, stock_code: str, data_type: str, **params: str) -> Path:
+        digest = hashlib.sha1(
+            json.dumps(params, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()[:16]
+        return self.cache_dir / stock_code / f"{data_type}_{digest}.json"
+
+    @staticmethod
+    def _write_cache(path: Path, items: list[dict]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "items": items,
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    @staticmethod
+    def _load_cache(path: Path) -> list[dict]:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return []
+        items = payload.get("items", [])
+        return items if isinstance(items, list) else []
+
+    def _load_akshare(self):
+        try:
+            ak = importlib.import_module("akshare")
+        except Exception as exc:  # pragma: no cover
+            raise ProviderError("akshare 未安装，无法获取分时数据") from exc
+        return ak
+
+    def health_check(self) -> bool:
+        try:
+            self._load_akshare()
+            return True
+        except Exception:
+            return False
+
+    def _fetch_with_retry(self, fetcher, cache_path: Path, loader):
+        last_error: Optional[Exception] = None
+        for _ in range(self.max_retries + 1):
+            try:
+                self._rate_limit()
+                items = fetcher()
+                self._write_cache(cache_path, items)
+                return loader(items), False
+            except Exception as exc:
+                last_error = exc
+                sleep(0.8)
+
+        if cache_path.exists():
+            return loader(self._load_cache(cache_path)), True
+
+        if isinstance(last_error, ProviderError):
+            raise last_error
+        raise ProviderError(f"{self.provider_label} 分时请求失败: {last_error}") from last_error
+
+    def get_minute_bars(
+        self,
+        stock_code: str,
+        period: str = "1",
+        adjust: str = "",
+        start_datetime: Optional[datetime] = None,
+        end_datetime: Optional[datetime] = None,
+    ) -> tuple[list[IntradayBar], bool]:
+        normalized_code = self._normalize_stock_code(stock_code)
+        cache_path = self._cache_path(
+            normalized_code,
+            "bars",
+            period=period,
+            adjust=adjust or "",
+            start=self._format_datetime(start_datetime),
+            end=self._format_datetime(end_datetime),
+        )
+
+        def fetcher() -> list[dict]:
+            ak = self._load_akshare()
+            kwargs = {"symbol": normalized_code, "period": str(period), "adjust": adjust or ""}
+            if start_datetime is not None:
+                kwargs["start_date"] = self._format_datetime(start_datetime)
+            if end_datetime is not None:
+                kwargs["end_date"] = self._format_datetime(end_datetime)
+            df = ak.stock_zh_a_hist_min_em(**kwargs)
+            if df is None or getattr(df, "empty", True):
+                raise ProviderError(f"AKShare 未返回 {normalized_code} 的分时 K 线")
+            return list(df.to_dict(orient="records"))
+
+        def loader(items: list[dict]) -> list[IntradayBar]:
+            bars: list[IntradayBar] = []
+            for item in items:
+                bars.append(
+                    IntradayBar(
+                        timestamp=self._safe_text(item, "时间", "datetime", "日期时间"),
+                        open_price=self._safe_float(item, "开盘", "open"),
+                        close_price=self._safe_float(item, "收盘", "close"),
+                        high_price=self._safe_float(item, "最高", "high"),
+                        low_price=self._safe_float(item, "最低", "low"),
+                        volume=self._safe_float(item, "成交量", "volume"),
+                        amount=self._safe_float(item, "成交额", "amount"),
+                        amplitude=self._safe_float(item, "振幅", "amplitude"),
+                        change_percent=self._safe_float(item, "涨跌幅", "pct_change"),
+                        change_amount=self._safe_float(item, "涨跌额", "change_amount"),
+                        turnover_rate=self._safe_float(item, "换手率", "turnover_rate"),
+                    )
+                )
+            return bars
+
+        return self._fetch_with_retry(fetcher, cache_path, loader)
+
+    def get_trade_ticks(self, stock_code: str) -> tuple[list[IntradayTrade], bool]:
+        normalized_code = self._normalize_stock_code(stock_code)
+        cache_path = self._cache_path(normalized_code, "ticks")
+
+        def fetcher() -> list[dict]:
+            ak = self._load_akshare()
+            df = ak.stock_intraday_em(symbol=normalized_code)
+            if df is None or getattr(df, "empty", True):
+                raise ProviderError(f"AKShare 未返回 {normalized_code} 的逐笔成交")
+            return list(df.to_dict(orient="records"))
+
+        def loader(items: list[dict]) -> list[IntradayTrade]:
+            trades: list[IntradayTrade] = []
+            for item in items:
+                trades.append(
+                    IntradayTrade(
+                        timestamp=self._safe_text(item, "时间", "trade_time", "datetime"),
+                        price=self._safe_float(item, "成交价", "price"),
+                        volume_lot=self._safe_float(item, "手数", "volume", "volume_lot"),
+                        side=self._safe_text(item, "买卖盘性质", "side", "direction"),
+                    )
+                )
+            return trades
+
+        return self._fetch_with_retry(fetcher, cache_path, loader)
+
+
+class PytdxIntradayDataProvider(AkshareIntradayDataProvider):
+    def __init__(
+        self,
+        cache_dir: str = "data/intraday",
+        request_interval_seconds: float = 1.2,
+        max_retries: int = 2,
+        hosts: str = "",
+        bar_count: int = 800,
+        tick_limit: int = 2000,
+    ):
+        super().__init__(
+            cache_dir=cache_dir,
+            request_interval_seconds=request_interval_seconds,
+            max_retries=max_retries,
+            provider_label="pytdx",
+        )
+        self.hosts = hosts
+        self.bar_count = max(1, min(int(bar_count or 800), 800))
+        self.tick_limit = max(1, int(tick_limit or 2000))
+        self._preferred_host: Optional[tuple[str, int]] = None
+
+    @staticmethod
+    def _market_for_stock(stock_code: str) -> int:
+        if stock_code.startswith(("50", "51", "58", "60", "68", "90")):
+            return 1
+        return 0
+
+    @staticmethod
+    def _category_for_period(period: str) -> int:
+        mapping = {
+            "1": 8,
+            "5": 0,
+            "15": 1,
+            "30": 2,
+            "60": 3,
+        }
+        normalized = str(period or "1").strip()
+        if normalized not in mapping:
+            raise ProviderError(f"pytdx 仅支持 1/5/15/30/60 分钟，收到: {period}")
+        return mapping[normalized]
+
+    @staticmethod
+    def _parse_timestamp_text(value: str) -> Optional[datetime]:
+        text = (value or "").strip()
+        if not text:
+            return None
+        text = text.replace("/", "-")
+        for pattern in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                return datetime.strptime(text, pattern)
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def _coerce_bar_timestamp(item: dict) -> str:
+        direct = AkshareIntradayDataProvider._safe_text(item, "datetime", "时间", "time")
+        parsed = PytdxIntradayDataProvider._parse_timestamp_text(direct)
+        if parsed is not None:
+            return parsed.strftime("%Y-%m-%d %H:%M:%S")
+
+        year = item.get("year")
+        month = item.get("month")
+        day = item.get("day")
+        if year is not None and month is not None and day is not None:
+            hour = int(item.get("hour") or 0)
+            minute = int(item.get("minute") or 0)
+            return f"{int(year):04d}-{int(month):02d}-{int(day):02d} {hour:02d}:{minute:02d}:00"
+        return ""
+
+    @staticmethod
+    def _normalize_side(value: object) -> str:
+        text = str(value).strip().lower()
+        mapping = {
+            "0": "买盘",
+            "1": "卖盘",
+            "2": "中性盘",
+            "b": "买盘",
+            "s": "卖盘",
+            "buy": "买盘",
+            "sell": "卖盘",
+        }
+        return mapping.get(text, str(value).strip()) if text else ""
+
+    def _load_pytdx(self):
+        try:
+            hq_module = importlib.import_module("pytdx.hq")
+            host_module = importlib.import_module("pytdx.config.hosts")
+        except Exception as exc:  # pragma: no cover
+            raise ProviderError("pytdx 未安装，无法获取更稳定的免费盘中数据") from exc
+        return hq_module.TdxHq_API, getattr(host_module, "hq_hosts", [])
+
+    def _candidate_hosts(self) -> list[tuple[str, int]]:
+        candidates: list[tuple[str, int]] = []
+        for raw in (self.hosts or "").split(","):
+            text = raw.strip()
+            if not text or ":" not in text:
+                continue
+            host, port = text.rsplit(":", 1)
+            try:
+                item = (host.strip(), int(port.strip()))
+            except ValueError:
+                continue
+            if item not in candidates:
+                candidates.append(item)
+
+        if not candidates:
+            _, hq_hosts = self._load_pytdx()
+            for row in hq_hosts:
+                if len(row) < 3:
+                    continue
+                item = (str(row[1]).strip(), int(row[2]))
+                if item not in candidates:
+                    candidates.append(item)
+                if len(candidates) >= 12:
+                    break
+
+        if self._preferred_host and self._preferred_host in candidates:
+            candidates.remove(self._preferred_host)
+            candidates.insert(0, self._preferred_host)
+        return candidates
+
+    def _call_pytdx(self, caller):
+        TdxHq_API, _ = self._load_pytdx()
+        last_error: Optional[Exception] = None
+
+        for host, port in self._candidate_hosts():
+            api = TdxHq_API(heartbeat=True, auto_retry=True, raise_exception=False)
+            try:
+                self._rate_limit()
+                if not api.connect(host, port):
+                    last_error = ProviderError(f"连接 {host}:{port} 失败")
+                    continue
+                result = caller(api)
+                if result is None:
+                    raise ProviderError(f"pytdx 从 {host}:{port} 返回空结果")
+                self._preferred_host = (host, port)
+                return result
+            except Exception as exc:
+                last_error = exc
+            finally:
+                try:
+                    api.disconnect()
+                except Exception:
+                    pass
+
+        if isinstance(last_error, ProviderError):
+            raise last_error
+        raise ProviderError(f"pytdx 未找到可用行情主机: {last_error}") from last_error
+
+    def health_check(self) -> bool:
+        try:
+            market = self._market_for_stock("000001")
+            rows = self._call_pytdx(lambda api: api.get_security_quotes([(market, "000001")]))
+            return bool(rows)
+        except Exception:
+            return False
+
+    def get_minute_bars(
+        self,
+        stock_code: str,
+        period: str = "1",
+        adjust: str = "",
+        start_datetime: Optional[datetime] = None,
+        end_datetime: Optional[datetime] = None,
+    ) -> tuple[list[IntradayBar], bool]:
+        normalized_code = self._normalize_stock_code(stock_code)
+        market = self._market_for_stock(normalized_code)
+        category = self._category_for_period(period)
+        cache_path = self._cache_path(
+            normalized_code,
+            "bars_pytdx",
+            period=str(period),
+            adjust=adjust or "",
+            start=self._format_datetime(start_datetime),
+            end=self._format_datetime(end_datetime),
+        )
+
+        def fetcher() -> list[dict]:
+            def caller(api):
+                raw = api.get_security_bars(category, market, normalized_code, 0, self.bar_count)
+                if not raw:
+                    raise ProviderError(f"pytdx 未返回 {normalized_code} 的分钟线")
+                df = api.to_df(raw)
+                if df is None or getattr(df, "empty", True):
+                    raise ProviderError(f"pytdx 未返回 {normalized_code} 的有效分钟线")
+                return list(df.to_dict(orient="records"))
+
+            return self._call_pytdx(caller)
+
+        def loader(items: list[dict]) -> list[IntradayBar]:
+            bars: list[IntradayBar] = []
+            for item in items:
+                timestamp = self._coerce_bar_timestamp(item)
+                dt = self._parse_timestamp_text(timestamp)
+                if not timestamp or dt is None:
+                    continue
+                if start_datetime and dt < start_datetime:
+                    continue
+                if end_datetime and dt > end_datetime:
+                    continue
+                bars.append(
+                    IntradayBar(
+                        timestamp=dt.strftime("%Y-%m-%d %H:%M:%S"),
+                        open_price=self._safe_float(item, "open", "开盘"),
+                        close_price=self._safe_float(item, "close", "price", "收盘"),
+                        high_price=self._safe_float(item, "high", "最高"),
+                        low_price=self._safe_float(item, "low", "最低"),
+                        volume=self._safe_float(item, "vol", "volume", "成交量"),
+                        amount=self._safe_float(item, "amount", "成交额"),
+                    )
+                )
+
+            bars.sort(key=lambda item: item.timestamp)
+            if not bars:
+                raise ProviderError(f"pytdx 未返回 {normalized_code} 的过滤后分钟线")
+            return bars
+
+        return self._fetch_with_retry(fetcher, cache_path, loader)
+
+    def get_trade_ticks(self, stock_code: str) -> tuple[list[IntradayTrade], bool]:
+        normalized_code = self._normalize_stock_code(stock_code)
+        market = self._market_for_stock(normalized_code)
+        cache_path = self._cache_path(normalized_code, "ticks_pytdx")
+
+        def fetcher() -> list[dict]:
+            def caller(api):
+                rows: list[dict] = []
+                start = 0
+                batch_size = 2000
+                while start < self.tick_limit:
+                    count = min(batch_size, self.tick_limit - start)
+                    batch = api.get_transaction_data(market, normalized_code, start, count)
+                    if not batch:
+                        break
+                    rows.extend(batch)
+                    if len(batch) < count:
+                        break
+                    start += len(batch)
+                if not rows:
+                    raise ProviderError(f"pytdx 未返回 {normalized_code} 的逐笔成交")
+                return rows
+
+            return self._call_pytdx(caller)
+
+        def loader(items: list[dict]) -> list[IntradayTrade]:
+            trades: list[IntradayTrade] = []
+            for item in items:
+                timestamp = self._safe_text(item, "time", "trade_time", "datetime", "时间")
+                trades.append(
+                    IntradayTrade(
+                        timestamp=timestamp,
+                        price=self._safe_float(item, "price", "成交价"),
+                        volume_lot=self._safe_float(item, "vol", "volume", "成交量", "手数"),
+                        side=self._normalize_side(item.get("buyorsell", item.get("side", ""))),
+                    )
+                )
+
+            trades.sort(key=lambda item: item.timestamp)
+            if not trades:
+                raise ProviderError(f"pytdx 未返回 {normalized_code} 的有效逐笔成交")
+            return trades
+
+        return self._fetch_with_retry(fetcher, cache_path, loader)
+
+
+class CompositeIntradayDataProvider(IntradayDataProvider):
+    def __init__(self, providers: list[tuple[str, IntradayDataProvider]]):
+        self.providers = providers
+
+    def health_check(self) -> bool:
+        return any(provider.health_check() for _, provider in self.providers)
+
+    def _dispatch(self, method_name: str, *args, **kwargs):
+        errors: list[str] = []
+        for name, provider in self.providers:
+            try:
+                return getattr(provider, method_name)(*args, **kwargs)
+            except Exception as exc:
+                errors.append(f"{name}: {exc}")
+        raise ProviderError("多源分时 provider 全部失败: " + "; ".join(errors))
+
+    def get_minute_bars(
+        self,
+        stock_code: str,
+        period: str = "1",
+        adjust: str = "",
+        start_datetime: Optional[datetime] = None,
+        end_datetime: Optional[datetime] = None,
+    ) -> tuple[list[IntradayBar], bool]:
+        return self._dispatch(
+            "get_minute_bars",
+            stock_code,
+            period=period,
+            adjust=adjust,
+            start_datetime=start_datetime,
+            end_datetime=end_datetime,
+        )
+
+    def get_trade_ticks(self, stock_code: str) -> tuple[list[IntradayTrade], bool]:
+        return self._dispatch("get_trade_ticks", stock_code)
 
 
 class NewsDataProvider:
@@ -546,12 +1150,62 @@ class WechatyConnectorPlaceholder(WeChatConnector):
 
 
 def build_market_provider(name: str) -> MarketDataProvider:
-    normalized = (name or "mock").strip().lower()
+    normalized = (name or "baostock").strip().lower()
     if normalized == "baostock":
         return BaostockMarketDataProvider()
-    if normalized == "mock":
-        return MockMarketDataProvider()
-    raise ProviderError(f"未知行情provider: {name}")
+    raise ProviderError(f"未知或不允许的行情provider: {name}，生产模式仅支持 baostock")
+
+
+def build_intraday_provider(
+    name: str,
+    cache_dir: str = "data/intraday",
+    request_interval_seconds: float = 1.2,
+    max_retries: int = 2,
+    pytdx_hosts: str = "",
+    pytdx_bar_count: int = 800,
+    pytdx_tick_limit: int = 2000,
+) -> IntradayDataProvider:
+    normalized = (name or "akshare").strip().lower()
+    if normalized in {"akshare", "aks"}:
+        return AkshareIntradayDataProvider(
+            cache_dir=cache_dir,
+            request_interval_seconds=request_interval_seconds,
+            max_retries=max_retries,
+        )
+    if normalized in {"pytdx", "tdx"}:
+        return PytdxIntradayDataProvider(
+            cache_dir=cache_dir,
+            request_interval_seconds=request_interval_seconds,
+            max_retries=max_retries,
+            hosts=pytdx_hosts,
+            bar_count=pytdx_bar_count,
+            tick_limit=pytdx_tick_limit,
+        )
+    if normalized in {"freebest", "best", "free"}:
+        return CompositeIntradayDataProvider(
+            [
+                (
+                    "pytdx",
+                    PytdxIntradayDataProvider(
+                        cache_dir=cache_dir,
+                        request_interval_seconds=request_interval_seconds,
+                        max_retries=max_retries,
+                        hosts=pytdx_hosts,
+                        bar_count=pytdx_bar_count,
+                        tick_limit=pytdx_tick_limit,
+                    ),
+                ),
+                (
+                    "akshare",
+                    AkshareIntradayDataProvider(
+                        cache_dir=cache_dir,
+                        request_interval_seconds=request_interval_seconds,
+                        max_retries=max_retries,
+                    ),
+                ),
+            ]
+        )
+    raise ProviderError(f"未知或不允许的分时provider: {name}，当前支持 akshare/pytdx/freebest")
 
 
 def build_news_provider(
@@ -561,7 +1215,7 @@ def build_news_provider(
     news_site_whitelist: str = "",
     news_site_timeout: int = 5,
 ) -> NewsDataProvider:
-    normalized = (name or "mock").strip().lower()
+    normalized = (name or "sites").strip().lower()
     if normalized == "tushare":
         return TushareNewsDataProvider(token=tushare_token)
     if normalized == "webhook":
@@ -569,6 +1223,4 @@ def build_news_provider(
     if normalized in {"sites", "site_whitelist", "website"}:
         sites = [item.strip() for item in (news_site_whitelist or "").split(",") if item.strip()]
         return SiteWhitelistNewsDataProvider(sites=sites, timeout=max(news_site_timeout, 1))
-    if normalized == "mock":
-        return MockNewsDataProvider()
-    raise ProviderError(f"未知新闻provider: {name}")
+    raise ProviderError(f"未知或不允许的新闻provider: {name}，生产模式仅支持 tushare/webhook/sites")

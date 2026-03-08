@@ -99,6 +99,88 @@ class NewsCandidateListResponse(BaseModel):
     items: list[dict]
 
 
+class IntradayBarItem(BaseModel):
+    timestamp: str
+    open_price: float
+    close_price: float
+    high_price: float
+    low_price: float
+    volume: float
+    amount: float
+    amplitude: float = 0.0
+    change_percent: float = 0.0
+    change_amount: float = 0.0
+    turnover_rate: float = 0.0
+
+
+class IntradayBarsResponse(BaseModel):
+    stock_code: str
+    source: str
+    period: str
+    adjust: str = ""
+    used_cache: bool = False
+    start_datetime: Optional[datetime] = None
+    end_datetime: Optional[datetime] = None
+    bars: list[IntradayBarItem]
+
+
+class IntradayTradeItem(BaseModel):
+    timestamp: str
+    price: float
+    volume_lot: float
+    side: str = ""
+
+
+class IntradayTradesResponse(BaseModel):
+    stock_code: str
+    source: str
+    used_cache: bool = False
+    trades: list[IntradayTradeItem]
+
+
+class IntradaySyncResponse(BaseModel):
+    stock_code: str
+    stock_name: str = ""
+    source: str
+    period: str
+    adjust: str = ""
+    used_cache: bool = False
+    saved_bars: int = 0
+    saved_ticks: int = 0
+    latest_bar_timestamp: str = ""
+    latest_tick_timestamp: str = ""
+
+
+class IntradayBatchSyncRequest(BaseModel):
+    stock_codes: list[str] = Field(default_factory=list)
+    period: str = "1"
+    adjust: str = ""
+    include_ticks: bool = True
+    start_datetime: Optional[datetime] = None
+    end_datetime: Optional[datetime] = None
+    limit: int = 10
+
+
+class IntradayBatchSyncItem(BaseModel):
+    stock_code: str
+    stock_name: str = ""
+    ok: bool
+    message: str = ""
+    saved_bars: int = 0
+    saved_ticks: int = 0
+    latest_bar_timestamp: str = ""
+
+
+class IntradayBatchSyncResponse(BaseModel):
+    source: str
+    period: str
+    adjust: str = ""
+    total_requested: int
+    success_count: int
+    failed_count: int
+    items: list[IntradayBatchSyncItem]
+
+
 class DashboardMetric(BaseModel):
     stock_pool_size: int
     recommender_count: int

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from .llm_client import LLMApiClient
+from .llm_usage_store import LLMUsageStore
 
 
 class StockAnalysisAgent:
@@ -11,6 +15,7 @@ class StockAnalysisAgent:
         api_base: str = "",
         chat_path: str = "/chat/completions",
         timeout_seconds: int = 15,
+        usage_store: LLMUsageStore | None = None,
     ) -> None:
         self.model_name = model_name
         self.client = LLMApiClient(
@@ -19,6 +24,8 @@ class StockAnalysisAgent:
             model=model_name,
             chat_path=chat_path,
             timeout_seconds=timeout_seconds,
+            usage_store=usage_store,
+            feature_name="analysis_agent",
         )
 
     def analyze(
@@ -30,6 +37,7 @@ class StockAnalysisAgent:
         pnl_percent: float,
         max_drawdown: float,
         rag_context: list[str],
+        evidence_bundle: dict[str, Any] | None = None,
     ) -> str:
         llm_result = self._call_llm(
             stock_code=stock_code,
@@ -39,6 +47,7 @@ class StockAnalysisAgent:
             pnl_percent=pnl_percent,
             max_drawdown=max_drawdown,
             rag_context=rag_context,
+            evidence_bundle=evidence_bundle,
         )
         if llm_result:
             return llm_result
@@ -62,7 +71,9 @@ class StockAnalysisAgent:
         pnl_percent: float,
         max_drawdown: float,
         rag_context: list[str],
+        evidence_bundle: dict[str, Any] | None,
     ) -> str:
+        evidence_text = json.dumps(evidence_bundle or {}, ensure_ascii=False, default=str)[:2400]
         prompt = (
             "你是严谨的A股复盘分析助手。"
             "请基于输入证据输出不超过5句的结论，必须包含："
@@ -74,7 +85,8 @@ class StockAnalysisAgent:
             f"当日评分: {score:.1f}\n"
             f"收益: {pnl_percent:.2f}%\n"
             f"最大回撤: {max_drawdown:.2f}%\n"
-            f"记忆上下文: {' | '.join(rag_context[:8]) if rag_context else '无'}"
+            f"记忆上下文: {' | '.join(rag_context[:8]) if rag_context else '无'}\n"
+            f"结构化证据包: {evidence_text if evidence_text and evidence_text != '{}' else '无'}"
         )
         messages = [
             {"role": "system", "content": "你是严谨且保守的A股分析助手，禁止夸大确定性。"},

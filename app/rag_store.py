@@ -80,3 +80,22 @@ class ResearchNoteStore:
             )
 
         return result[:limit]
+
+    def list_recent(self, limit: int = 10, source_prefix: str = "") -> list[dict[str, Any]]:
+        rows = self._read_all()
+        result: list[dict[str, Any]] = []
+        for row in reversed(rows):
+            source = str(row.get("source") or "")
+            if source_prefix and not source.startswith(source_prefix):
+                continue
+            result.append(
+                {
+                    "ts": str(row.get("ts") or ""),
+                    "source": source,
+                    "recommender_name": str(row.get("recommender_name") or ""),
+                    "text": str(row.get("text") or ""),
+                }
+            )
+            if len(result) >= limit:
+                break
+        return result

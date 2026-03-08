@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ detail.stock_code }} {{ detail.stock_name }} · 单票详情</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --surface2: #22263a;
+            --border: #2e3350;
+            --accent: #4f8ef7;
+            --accent2: #6c63ff;
+            --green: #22c55e;
+            --red: #ef4444;
+            --yellow: #f59e0b;
+            --text: #e2e8f0;
+            --text-muted: #8892a4;
+            --radius: 12px;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+        }
+        .page { max-width: 1400px; margin: 0 auto; padding: 28px 32px 60px; }
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .back-link {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .hero {
+            background: linear-gradient(135deg, #151a30 0%, #1f2543 100%);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 26px 28px;
+            margin-bottom: 24px;
+        }
+        .hero h1 { margin: 0 0 8px; font-size: 30px; }
+        .hero-meta {
+            display: flex;
+            gap: 18px;
+            flex-wrap: wrap;
+            color: var(--text-muted);
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+        .hero-logic {
+            background: rgba(255,255,255,.04);
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 12px;
+            padding: 16px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(12, minmax(0, 1fr));
+            gap: 20px;
+        }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+        }
+        .span-4 { grid-column: span 4; }
+        .span-6 { grid-column: span 6; }
+        .span-8 { grid-column: span 8; }
+        .span-12 { grid-column: span 12; }
+        @media (max-width: 1100px) {
+            .span-4, .span-6, .span-8, .span-12 { grid-column: span 12; }
+        }
+        .section-title {
+            margin: 0 0 14px;
+            font-size: 16px;
+            font-weight: 700;
+        }
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+        }
+        .metric-box {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px;
+        }
+        .metric-label { color: var(--text-muted); font-size: 12px; margin-bottom: 6px; }
+        .metric-value { font-size: 24px; font-weight: 700; }
+        .pill {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 999px;
+            background: rgba(79,142,247,.15);
+            color: var(--accent);
+            border: 1px solid rgba(79,142,247,.35);
+            font-size: 12px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        .list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .item {
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            border-radius: 10px;
+            padding: 14px 16px;
+        }
+        .item-meta {
+            color: var(--text-muted);
+            font-size: 12px;
+            margin-bottom: 6px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .item-title { font-weight: 600; margin-bottom: 6px; }
+        .muted { color: var(--text-muted); }
+        .pos { color: var(--green); }
+        .neg { color: var(--red); }
+        .warning { color: var(--yellow); }
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: inherit;
+        }
+        .empty { color: var(--text-muted); }
+        .action-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+        .btn {
+            border: 1px solid var(--border);
+            background: linear-gradient(135deg, #315fcb 0%, #5f66ff 100%);
+            color: #fff;
+            border-radius: 10px;
+            padding: 9px 14px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .btn.secondary {
+            background: var(--surface2);
+            color: var(--text);
+        }
+        .control {
+            background: var(--surface2);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px 10px;
+        }
+        .chart-shell {
+            border: 1px solid var(--border);
+            background: #121622;
+            border-radius: 12px;
+            padding: 12px;
+            min-height: 500px;
+        }
+        .quote-strip {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .quote-box {
+            background: rgba(255,255,255,.03);
+            border: 1px solid rgba(255,255,255,.06);
+            border-radius: 10px;
+            padding: 10px 12px;
+        }
+        .quote-label { color: var(--text-muted); font-size: 12px; }
+        .quote-value { margin-top: 6px; font-weight: 700; font-size: 18px; }
+        .broker-board {
+            border: 1px solid rgba(255,255,255,.06);
+            border-radius: 12px;
+            overflow: hidden;
+            background: linear-gradient(180deg, rgba(27,33,52,.9) 0%, rgba(14,18,31,.95) 100%);
+        }
+        .broker-board-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            border-bottom: 1px solid rgba(255,255,255,.06);
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        .broker-legends {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            display: inline-block;
+            margin-right: 6px;
+        }
+        #intraday-canvas {
+            width: 100%;
+            height: 420px;
+            display: block;
+        }
+        .chart-meta {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .mini-box {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 12px;
+        }
+        .mini-label { font-size: 12px; color: var(--text-muted); }
+        .mini-value { font-weight: 700; margin-top: 6px; }
+        .status-line { color: var(--text-muted); font-size: 13px; margin-bottom: 10px; }
+        .tick-list { max-height: 260px; overflow: auto; }
+        .tick-row {
+            display: grid;
+            grid-template-columns: 76px 1fr 1fr 1fr;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,.06);
+            font-size: 13px;
+        }
+        .tick-row span:last-child { text-align: right; }
+        .tick-summary {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 12px;
+        }
+        .board-note {
+            margin-top: 10px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        .auto-refresh {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        @media (max-width: 900px) {
+            .quote-strip,
+            .chart-meta,
+            .tick-summary,
+            .metric-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="page">
+    <div class="topbar">
+        <a class="back-link" href="/">← 返回总览</a>
+        <div class="muted">单票详情页</div>
+    </div>
+
+    <section class="hero">
+        <h1>{{ detail.stock_code }} {{ detail.stock_name or '-' }}</h1>
+        <div class="hero-meta">
+            <span>状态：{{ detail.latest_status or '-' }}</span>
+            <span>首次进入：{{ detail.first_seen or '-' }}</span>
+            <span>最近更新：{{ detail.latest_recommend_ts or '-' }}</span>
+            <span>贡献人：{{ detail.contributors|join(' / ') if detail.contributors else '-' }}</span>
+        </div>
+        <div class="hero-logic">
+            <div class="muted">最新逻辑</div>
+            <div>{{ detail.latest_logic or '暂无' }}</div>
+        </div>
+    </section>
+
+    <div class="grid">
+        <section class="card span-12">
+            <h2 class="section-title">分时数据链路验证</h2>
+            {% set intraday_summary = detail.get('intraday_summary') or {} %}
+            <div class="status-line">
+                已落库：K线 {{ intraday_summary.get('bar_count', 0) or 0 }} 条，逐笔 {{ intraday_summary.get('tick_count', 0) or 0 }} 条，最近时间 {{ intraday_summary.get('latest_bar_timestamp', '-') or '-' }}
+            </div>
+            <div class="action-row">
+                <select id="intraday-period" class="control">
+                    <option value="1">1 分钟</option>
+                    <option value="5">5 分钟</option>
+                    <option value="15">15 分钟</option>
+                    <option value="30">30 分钟</option>
+                    <option value="60">60 分钟</option>
+                </select>
+                <input id="intraday-start" class="control" type="datetime-local" />
+                <input id="intraday-end" class="control" type="datetime-local" />
+                <button id="intraday-sync-btn" class="btn">同步并落库</button>
+                <button id="intraday-load-btn" class="btn secondary">读取已落库数据</button>
+                <span id="intraday-status" class="muted">等待加载</span>
+                <label class="auto-refresh">
+                    <input id="auto-refresh-toggle" type="checkbox" checked />
+                    自动刷新
+                    <select id="auto-refresh-interval" class="control">
+                        <option value="10000">10 秒</option>
+                        <option value="15000" selected>15 秒</option>
+                        <option value="30000">30 秒</option>
+                        <option value="60000">60 秒</option>
+                    </select>
+                </label>
+            </div>
+            <div class="grid">
+                <div class="span-8">
+                    <div class="chart-shell">
+                        <div class="quote-strip">
+                            <div class="quote-box"><div class="quote-label">昨收</div><div id="quote-prev-close" class="quote-value">-</div></div>
+                            <div class="quote-box"><div class="quote-label">最新价</div><div id="quote-last" class="quote-value">-</div></div>
+                            <div class="quote-box"><div class="quote-label">涨跌额</div><div id="quote-change" class="quote-value">-</div></div>
+                            <div class="quote-box"><div class="quote-label">涨跌幅</div><div id="quote-change-pct" class="quote-value">-</div></div>
+                            <div class="quote-box"><div class="quote-label">日内高 / 低</div><div id="quote-range" class="quote-value">-</div></div>
+                            <div class="quote-box"><div class="quote-label">均价</div><div id="quote-average" class="quote-value">-</div></div>
+                            <div class="quote-box"><div class="quote-label">成交额</div><div id="quote-amount" class="quote-value">-</div></div>
+                        </div>
+                        <div class="broker-board">
+                            <div class="broker-board-header">
+                                <div>同花顺风格分时图 · 昨收基准 / 价格线 / 均价线 / 涨跌幅刻度 / 成交量</div>
+                                <div class="broker-legends">
+                                    <span><i class="legend-dot" style="background:#f59e0b;"></i>价格线</span>
+                                    <span><i class="legend-dot" style="background:#4f8ef7;"></i>均价线</span>
+                                    <span><i class="legend-dot" style="background:#a78bfa;"></i>昨收 / 0%基准线</span>
+                                    <span><i class="legend-dot" style="background:#ef4444;"></i>放量上涨</span>
+                                    <span><i class="legend-dot" style="background:#22c55e;"></i>放量下跌</span>
+                                </div>
+                            </div>
+                            <canvas id="intraday-canvas" width="900" height="420"></canvas>
+                        </div>
+                        <div class="chart-meta">
+                            <div class="mini-box"><div class="mini-label">K线条数</div><div id="meta-bars" class="mini-value">0</div></div>
+                            <div class="mini-box"><div class="mini-label">最新收盘</div><div id="meta-close" class="mini-value">-</div></div>
+                            <div class="mini-box"><div class="mini-label">累计成交量</div><div id="meta-volume" class="mini-value">-</div></div>
+                            <div class="mini-box"><div class="mini-label">最近时间</div><div id="meta-ts" class="mini-value">-</div></div>
+                        </div>
+                        <div class="board-note">页面会按同花顺常见样式，以昨收为 0% 基准重绘左侧价格刻度、右侧涨跌幅百分比刻度和下方成交量柱。</div>
+                        {% set maintenance = detail.get('stock_daily_maintenance') or {} %}
+                        {% set intraday_refresh = detail.get('intraday_refresh') or {} %}
+                        <div class="item" style="margin-top: 12px;">
+                            <div class="item-title">天级别股票信息维护</div>
+                            {% if maintenance %}
+                            <div class="item-meta" style="margin-bottom: 8px;">
+                                <span>交易日 {{ maintenance.get('market_date', '-') }}</span>
+                                <span>刷新时间 {{ maintenance.get('updated_at', '-') or '-' }}</span>
+                                <span>数据源 {{ maintenance.get('data_source', '-') or '-' }}</span>
+                                <span>基准 {{ maintenance.get('reference_source', '-') or '-' }}</span>
+                            </div>
+                            <div class="metric-grid" style="margin-bottom: 10px;">
+                                <div class="metric-box">
+                                    <div class="metric-label">最新价 / 涨跌幅</div>
+                                    <div class="metric-value {% if maintenance.get('change_percent', 0) > 0 %}neg{% elif maintenance.get('change_percent', 0) < 0 %}pos{% endif %}">
+                                        {{ '%.2f'|format(maintenance.get('latest_price', 0) or 0) }} / {{ '%+.2f'|format(maintenance.get('change_percent', 0) or 0) }}%
+                                    </div>
+                                </div>
+                                <div class="metric-box">
+                                    <div class="metric-label">均价 / 昨收</div>
+                                    <div class="metric-value">{{ '%.2f'|format(maintenance.get('average_price', 0) or 0) }} / {{ '%.2f'|format(maintenance.get('reference_price', 0) or 0) }}</div>
+                                </div>
+                                <div class="metric-box">
+                                    <div class="metric-label">高 / 低</div>
+                                    <div class="metric-value">{{ '%.2f'|format(maintenance.get('high_price', 0) or 0) }} / {{ '%.2f'|format(maintenance.get('low_price', 0) or 0) }}</div>
+                                </div>
+                                <div class="metric-box">
+                                    <div class="metric-label">分钟线 / 逐笔</div>
+                                    <div class="metric-value">{{ maintenance.get('bar_count', 0) or 0 }} / {{ maintenance.get('tick_count', 0) or 0 }}</div>
+                                </div>
+                            </div>
+                            <pre>{{ maintenance.get('summary_text', '暂无维护摘要') }}</pre>
+                            <div class="item" style="margin-top: 10px;">
+                                <div class="item-title">进入页面自动触发的 Agent 盘中解读</div>
+                                <div class="item-meta">
+                                    <span>触发方式 打开个股页</span>
+                                    <span>时间 {{ maintenance.get('agent_intraday_analysis_ts', '-') or '-' }}</span>
+                                </div>
+                                <pre>{{ maintenance.get('agent_intraday_analysis', '暂无盘中解读') or '暂无盘中解读' }}</pre>
+                            </div>
+                            {% else %}
+                            <div class="empty">暂无天级别维护快照</div>
+                            {% endif %}
+                            <div class="status-line" style="margin-top: 10px;">
+                                查询即拉取实时盘中数据：
+                                {% if intraday_refresh.get('refreshed') %}
+                                已刷新完成
+                                {% else %}
+                                {{ intraday_refresh.get('reason', '未刷新') }}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="span-4">
+                    <div class="item" style="height: 100%;">
+                        <div class="item-title">最新逐笔成交</div>
+                        <div id="tick-list" class="tick-list empty">暂无逐笔数据</div>
+                        <div class="tick-summary">
+                            <div class="mini-box"><div class="mini-label">主动买笔数</div><div id="tick-buy-count" class="mini-value">0</div></div>
+                            <div class="mini-box"><div class="mini-label">主动卖笔数</div><div id="tick-sell-count" class="mini-value">0</div></div>
+                            <div class="mini-box"><div class="mini-label">买盘量</div><div id="tick-buy-volume" class="mini-value">0</div></div>
+                            <div class="mini-box"><div class="mini-label">卖盘量</div><div id="tick-sell-volume" class="mini-value">0</div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="card span-8">
+            <h2 class="section-title">最新跟踪结论</h2>
+            {% if detail.latest_daily %}
+            <div class="metric-grid" style="margin-bottom: 16px;">
+                <div class="metric-box">
+                    <div class="metric-label">最新行情日期</div>
+                    <div class="metric-value">{{ detail.latest_daily.market_date }}</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">SQS评分</div>
+                    <div class="metric-value">{{ '%.1f'|format(detail.latest_daily.evaluation_score) }}</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">收益 / 回撤</div>
+                    <div class="metric-value {% if detail.latest_daily.pnl_percent > 0 %}pos{% elif detail.latest_daily.pnl_percent < 0 %}neg{% endif %}">
+                        {{ '%.2f'|format(detail.latest_daily.pnl_percent) }}% / {{ '%.2f'|format(detail.latest_daily.max_drawdown) }}%
+                    </div>
+                </div>
+            </div>
+            <div class="item" style="margin-bottom: 12px;">
+                <div class="item-title">LLM跟踪分析</div>
+                <pre>{{ detail.latest_daily.ai_analysis or detail.latest_daily.raw_notes or '暂无' }}</pre>
+            </div>
+            <div class="item">
+                <div class="item-title">SQS拆解</div>
+                <pre>{{ detail.latest_daily.sqs_breakdown or '暂无' }}</pre>
+            </div>
+            {% else %}
+            <div class="empty">暂无最新跟踪数据</div>
+            {% endif %}
+        </section>
+
+        <section class="card span-4">
+            <h2 class="section-title">AI次日预测</h2>
+            {% if detail.prediction %}
+            <div class="item" style="margin-bottom: 12px;">
+                <div class="item-meta">
+                    <span>目标日 {{ detail.prediction.prediction_date }}</span>
+                    <span>来源 {{ detail.prediction.predicted_by }}</span>
+                    <span>复盘 {{ detail.prediction.review_result }}</span>
+                </div>
+                <div class="item-title">方向 {{ detail.prediction.direction }} · 置信度 {{ '%.2f'|format(detail.prediction.confidence) }}</div>
+                <pre>{{ detail.prediction.thesis or '暂无' }}</pre>
+            </div>
+            <div class="item" style="margin-bottom: 12px;">
+                <div class="item-title">失效条件</div>
+                <pre>{{ detail.prediction.invalidation_conditions or '暂无' }}</pre>
+            </div>
+            <div class="item" style="margin-bottom: 12px;">
+                <div class="item-title">复盘摘要</div>
+                <pre>{{ detail.prediction.review_summary or '暂无' }}</pre>
+                <div style="margin-top: 10px;">
+                    {% for tag in detail.prediction.review_tags %}
+                    <span class="pill">{{ tag }}</span>
+                    {% else %}
+                    <span class="empty">暂无复盘标签</span>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="item">
+                <div class="item-title">风险与证据</div>
+                <div>
+                    {% for flag in detail.prediction.risk_flags %}
+                    <span class="pill">{{ flag }}</span>
+                    {% else %}
+                    <span class="empty">暂无风险标签</span>
+                    {% endfor %}
+                </div>
+                <div style="margin-top: 10px;">
+                    {% for ev in detail.prediction.evidence %}
+                    <div class="muted">- {{ ev }}</div>
+                    {% else %}
+                    <div class="empty">暂无证据列表</div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% else %}
+            <div class="empty">暂无AI预测</div>
+            {% endif %}
+        </section>
+
+        <section class="card span-6">
+            <h2 class="section-title">信息源摘要</h2>
+            {% set source_quality = detail.get('source_quality_summary', {}) %}
+            <div class="item" style="margin-bottom: 12px;">
+                <div class="item-meta">
+                    <span>来源数 {{ source_quality.get('source_count', 0) }}</span>
+                    <span>证据数 {{ source_quality.get('evidence_count', 0) }}</span>
+                    <span>平均权重 {{ '%.2f'|format(source_quality.get('avg_weight', 0)) }}</span>
+                </div>
+                <div class="list">
+                    {% for item in source_quality.get('top_sources', []) %}
+                    <div class="item">
+                        <div class="item-meta">
+                            <span>{{ item.get('source', '-') }}</span>
+                            <span>count={{ item.get('count', 0) }}</span>
+                            <span>weight={{ '%.2f'|format(item.get('weight', 0)) }}</span>
+                            <span>score={{ '%.2f'|format(item.get('weighted_score', 0)) }}</span>
+                        </div>
+                        <pre>{{ item.get('sample') or '暂无样例' }}</pre>
+                    </div>
+                    {% else %}
+                    <div class="empty">暂无来源摘要</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+
+        <section class="card span-6">
+            <h2 class="section-title">推荐 / 跟踪时间线</h2>
+            <div class="list">
+                {% for item in detail.recommendations %}
+                <div class="item">
+                    <div class="item-meta">
+                        <span>{{ item.recommend_ts }}</span>
+                        <span>{{ item.recommender_name }}</span>
+                        <span>{{ item.source }}</span>
+                        <span>{{ item.status }}</span>
+                    </div>
+                    <div class="item-title">{{ item.logic or '暂无逻辑' }}</div>
+                    <pre>{{ item.original_message }}</pre>
+                </div>
+                {% else %}
+                <div class="empty">暂无推荐记录</div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="card span-6">
+            <h2 class="section-title">按交易日聚合的跟踪历史</h2>
+            <div class="list">
+                {% for item in detail.daily_history %}
+                <div class="item">
+                    <div class="item-meta">
+                        <span>{{ item.market_date }}</span>
+                        <span>SQS {{ '%.1f'|format(item.evaluation_score) }}</span>
+                        <span class="{% if item.pnl_percent > 0 %}pos{% elif item.pnl_percent < 0 %}neg{% endif %}">
+                            收益 {{ '%.2f'|format(item.pnl_percent) }}%
+                        </span>
+                        <span>贡献人 {{ item.recommender_names|join(' / ') }}</span>
+                        <span>版本数 {{ item.duplicate_count }}</span>
+                    </div>
+                    <div class="item-title">LLM分析</div>
+                    <pre>{{ item.ai_analysis or item.raw_notes or '暂无' }}</pre>
+                    {% if item.logic_versions %}
+                    <div class="muted" style="margin-top: 8px;">逻辑版本：{{ item.logic_versions|join(' ｜ ') }}</div>
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="empty">暂无历史记录</div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="card span-6">
+            <h2 class="section-title">个股知识库</h2>
+            <div class="list">
+                {% for item in detail.knowledge_entries %}
+                <div class="item">
+                    <div class="item-meta">
+                        <span>{{ item.ts }}</span>
+                        <span>{{ item.entry_type }}</span>
+                        <span>{{ item.source }}</span>
+                    </div>
+                    <pre>{{ item.content }}</pre>
+                </div>
+                {% else %}
+                <div class="empty">暂无个股知识条目</div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="card span-6">
+            <h2 class="section-title">关联资讯与宏观背景</h2>
+            <div class="list">
+                {% for item in detail.related_notes %}
+                <div class="item">
+                    <div class="item-meta">
+                        <span>{{ item.ts }}</span>
+                        <span>{{ item.recommender_name }}</span>
+                        <span>{{ item.source }}</span>
+                    </div>
+                    <pre>{{ item.text }}</pre>
+                </div>
+                {% else %}
+                <div class="empty">暂无关联资讯</div>
+                {% endfor %}
+
+                {% if detail.recent_macro_notes %}
+                <div class="item">
+                    <div class="item-title warning">近期宏观背景</div>
+                    {% for item in detail.recent_macro_notes %}
+                    <div style="margin-top: 8px;">
+                        <div class="item-meta">
+                            <span>{{ item.ts }}</span>
+                            <span>{{ item.recommender_name }}</span>
+                        </div>
+                        <pre>{{ item.text }}</pre>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </section>
+    </div>
+</div>
+<script id="intraday-bars-data" type="application/json">{{ (detail.get('intraday_bars') or [])|tojson }}</script>
+<script id="intraday-ticks-data" type="application/json">{{ (detail.get('intraday_ticks') or [])|tojson }}</script>
+<script id="intraday-reference-data" type="application/json">{{ detail.get('intraday_reference_price')|tojson }}</script>
+<script>
+    const stockCode = "{{ detail.stock_code }}";
+    const preloadedBars = JSON.parse(document.getElementById('intraday-bars-data')?.textContent || '[]');
+    const preloadedTicks = JSON.parse(document.getElementById('intraday-ticks-data')?.textContent || '[]');
+    const preloadedReferencePrice = JSON.parse(document.getElementById('intraday-reference-data')?.textContent || 'null');
+    const canvas = document.getElementById('intraday-canvas');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('intraday-status');
+    let autoRefreshTimer = null;
+    let latestBars = [];
+    let latestTrades = [];
+    let latestReferencePrice = Number(preloadedReferencePrice || 0);
+
+    function formatNumber(value, digits = 0) {
+        const num = Number(value || 0);
+        if (!Number.isFinite(num)) return '-';
+        return num.toLocaleString('zh-CN', {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits,
+        });
+    }
+
+    function formatSigned(value, digits = 2, suffix = '') {
+        const num = Number(value || 0);
+        if (!Number.isFinite(num)) return '-';
+        const sign = num > 0 ? '+' : '';
+        return `${sign}${num.toFixed(digits)}${suffix}`;
+    }
+
+    function getPriceClass(value) {
+        const num = Number(value || 0);
+        if (num > 0) return 'neg';
+        if (num < 0) return 'pos';
+        return '';
+    }
+
+    function applyValue(elId, text, cls = '') {
+        const el = document.getElementById(elId);
+        el.textContent = text;
+        el.className = `quote-value ${cls}`.trim();
+    }
+
+    function formatDateTimeLocal(dateObj) {
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}T${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
+    }
+
+    function initDefaultRange() {
+        const end = new Date();
+        const start = new Date(end.getTime() - 6.5 * 60 * 60 * 1000);
+        document.getElementById('intraday-end').value = formatDateTimeLocal(end);
+        document.getElementById('intraday-start').value = formatDateTimeLocal(start);
+    }
+
+    function setStatus(text) {
+        statusEl.textContent = text;
+    }
+
+    function inferVolumeMultiplier(bars) {
+        if (!bars.length) return 100;
+        const totalAmount = bars.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+        const totalVolume = bars.reduce((sum, item) => sum + (Number(item.volume) || 0), 0);
+        const latestPrice = Number(bars[bars.length - 1]?.close_price || 0);
+        if (!totalAmount || !totalVolume || !latestPrice) return 100;
+        const priceIfShares = totalAmount / totalVolume;
+        const priceIfLots = totalAmount / (totalVolume * 100);
+        return Math.abs(priceIfShares - latestPrice) <= Math.abs(priceIfLots - latestPrice) ? 1 : 100;
+    }
+
+    function volumeLotToShares(volume, multiplier = 100) {
+        const num = Number(volume || 0);
+        if (!Number.isFinite(num)) return 0;
+        return num * multiplier;
+    }
+
+    function resolveReferencePrice(bars) {
+        if (Number.isFinite(latestReferencePrice) && latestReferencePrice > 0) {
+            return latestReferencePrice;
+        }
+        if (!bars.length) return 0;
+        return Number(bars[0].open_price || bars[0].close_price || 0);
+    }
+
+    function syncCanvasResolution() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        const width = Math.max(Math.floor(rect.width * dpr), 320);
+        const height = Math.max(Math.floor(rect.height * dpr), 260);
+        if (canvas.width !== width || canvas.height !== height) {
+            canvas.width = width;
+            canvas.height = height;
+        }
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(dpr, dpr);
+        return { width: rect.width, height: rect.height };
+    }
+
+    function drawBars(bars) {
+        const { width, height } = syncCanvasResolution();
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = '#121622';
+        ctx.fillRect(0, 0, width, height);
+        if (!bars.length) {
+            ctx.fillStyle = '#8892a4';
+            ctx.font = '14px sans-serif';
+            ctx.fillText('暂无分时数据', 20, 28);
+            return;
+        }
+
+        const prices = bars.map(item => Number(item.close_price || 0));
+        const volumeMultiplier = inferVolumeMultiplier(bars);
+        const avgPrices = [];
+        let cumAmount = 0;
+        let cumVolumeShares = 0;
+        bars.forEach(item => {
+            cumAmount += Number(item.amount || 0);
+            cumVolumeShares += volumeLotToShares(item.volume, volumeMultiplier);
+            avgPrices.push(cumVolumeShares > 0 ? cumAmount / cumVolumeShares : Number(item.close_price || 0));
+        });
+
+        const allPrices = prices.concat(avgPrices);
+        const referencePrice = resolveReferencePrice(bars);
+        const maxDeviation = referencePrice > 0
+            ? Math.max(...allPrices.map(price => Math.abs(price - referencePrice)), 0.01)
+            : Math.max(Math.max(...allPrices) - Math.min(...allPrices), 0.01) / 2;
+        const minPrice = referencePrice > 0 ? referencePrice - maxDeviation : Math.min(...allPrices);
+        const maxPrice = referencePrice > 0 ? referencePrice + maxDeviation : Math.max(...allPrices);
+        const priceRange = Math.max(maxPrice - minPrice, 0.01);
+        const maxVolume = Math.max(...bars.map(item => Number(item.volume || 0)), 1);
+        const left = 48;
+        const right = width - 56;
+        const top = 18;
+        const priceBottom = height * 0.72;
+        const volumeTop = height * 0.78;
+        const bottom = height - 28;
+        const chartWidth = right - left;
+        const priceHeight = priceBottom - top;
+        const volumeHeight = bottom - volumeTop;
+        const step = chartWidth / Math.max(bars.length - 1, 1);
+
+        ctx.strokeStyle = 'rgba(255,255,255,.08)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 5; i++) {
+            const y = top + (priceHeight / 4) * i;
+            ctx.beginPath();
+            ctx.moveTo(left, y);
+            ctx.lineTo(right, y);
+            ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.moveTo(left, volumeTop);
+        ctx.lineTo(right, volumeTop);
+        ctx.stroke();
+
+        ctx.fillStyle = '#8892a4';
+        ctx.font = '12px sans-serif';
+        for (let i = 0; i < 5; i++) {
+            const y = top + (priceHeight / 4) * i;
+            const price = maxPrice - (priceRange / 4) * i;
+            ctx.fillText(price.toFixed(2), 6, y + 4);
+            if (referencePrice > 0) {
+                const pct = ((price - referencePrice) / referencePrice) * 100;
+                ctx.textAlign = 'right';
+                ctx.fillStyle = pct > 0 ? '#ef4444' : (pct < 0 ? '#22c55e' : '#a78bfa');
+                ctx.fillText(`${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`, width - 8, y + 4);
+                ctx.textAlign = 'left';
+                ctx.fillStyle = '#8892a4';
+            }
+        }
+
+        const timeMarks = [0, Math.floor(bars.length * 0.25), Math.floor(bars.length * 0.5), Math.floor(bars.length * 0.75), bars.length - 1]
+            .filter((value, index, arr) => arr.indexOf(value) === index);
+        timeMarks.forEach(index => {
+            const x = left + index * step;
+            ctx.fillStyle = '#8892a4';
+            ctx.fillText((bars[index]?.timestamp || '').slice(11, 16), x - 18, height - 8);
+        });
+
+        const priceToY = (price) => top + ((maxPrice - price) / priceRange) * priceHeight;
+
+        if (referencePrice > 0 && referencePrice >= minPrice && referencePrice <= maxPrice) {
+            const baseY = priceToY(referencePrice);
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = 'rgba(167,139,250,.95)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(left, baseY);
+            ctx.lineTo(right, baseY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        ctx.beginPath();
+        bars.forEach((item, index) => {
+            const x = left + index * step;
+            const y = priceToY(Number(item.close_price || 0));
+            if (index === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.beginPath();
+        avgPrices.forEach((price, index) => {
+            const x = left + index * step;
+            const y = priceToY(price);
+            if (index === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = '#4f8ef7';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+
+        bars.forEach((item, index) => {
+            const x = left + index * step;
+            const prevClose = index > 0 ? Number(bars[index - 1].close_price || 0) : Number(item.open_price || item.close_price || 0);
+            const isUp = Number(item.close_price || 0) >= prevClose;
+            const barHeight = Math.max((Number(item.volume || 0) / maxVolume) * volumeHeight, 1);
+            ctx.fillStyle = isUp ? 'rgba(239,68,68,.82)' : 'rgba(34,197,94,.82)';
+            ctx.fillRect(x - Math.max(step * 0.25, 1), bottom - barHeight, Math.max(step * 0.5, 2), barHeight);
+        });
+
+        const latest = bars[bars.length - 1];
+        if (latest) {
+            const y = priceToY(Number(latest.close_price || 0));
+            ctx.setLineDash([4, 4]);
+            ctx.strokeStyle = 'rgba(245,158,11,.7)';
+            ctx.beginPath();
+            ctx.moveTo(left, y);
+            ctx.lineTo(right, y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+    }
+
+    function updateMeta(bars) {
+        const latest = bars[bars.length - 1];
+        if (!latest) {
+            document.getElementById('meta-bars').textContent = '0';
+            document.getElementById('meta-close').textContent = '-';
+            document.getElementById('meta-volume').textContent = '-';
+            document.getElementById('meta-ts').textContent = '-';
+            applyValue('quote-prev-close', '-');
+            applyValue('quote-last', '-');
+            applyValue('quote-change', '-');
+            applyValue('quote-change-pct', '-');
+            applyValue('quote-range', '-');
+            applyValue('quote-average', '-');
+            applyValue('quote-amount', '-');
+            return;
+        }
+        const first = bars[0];
+        const totalVolume = bars.reduce((sum, item) => sum + (Number(item.volume) || 0), 0);
+        const totalAmount = bars.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+        const volumeMultiplier = inferVolumeMultiplier(bars);
+        const totalVolumeShares = bars.reduce((sum, item) => sum + volumeLotToShares(item.volume, volumeMultiplier), 0);
+        const dayHigh = Math.max(...bars.map(item => Number(item.high_price || 0)));
+        const dayLow = Math.min(...bars.map(item => Number(item.low_price || 0)));
+        const averagePrice = totalVolumeShares > 0 ? totalAmount / totalVolumeShares : Number(latest.close_price || 0);
+        const referencePrice = resolveReferencePrice(bars);
+        const change = Number(latest.close_price || 0) - referencePrice;
+        const changePct = referencePrice ? (change / referencePrice) * 100 : 0;
+        document.getElementById('meta-bars').textContent = String(bars.length);
+        document.getElementById('meta-close').textContent = latest ? Number(latest.close_price).toFixed(2) : '-';
+        document.getElementById('meta-volume').textContent = totalVolume ? formatNumber(totalVolume, 0) : '-';
+        document.getElementById('meta-ts').textContent = latest ? latest.timestamp : '-';
+        applyValue('quote-prev-close', referencePrice ? formatNumber(referencePrice, 2) : '-');
+        applyValue('quote-last', formatNumber(latest.close_price, 2), getPriceClass(change));
+        applyValue('quote-change', formatSigned(change, 2), getPriceClass(change));
+        applyValue('quote-change-pct', formatSigned(changePct, 2, '%'), getPriceClass(change));
+        applyValue('quote-range', `${formatNumber(dayHigh, 2)} / ${formatNumber(dayLow, 2)}`);
+        applyValue('quote-average', formatNumber(averagePrice, 2));
+        applyValue('quote-amount', `${formatNumber(totalAmount / 100000000, 2)} 亿`);
+    }
+
+    function renderTicks(trades) {
+        const box = document.getElementById('tick-list');
+        if (!trades.length) {
+            box.className = 'tick-list empty';
+            box.textContent = '暂无逐笔数据';
+            document.getElementById('tick-buy-count').textContent = '0';
+            document.getElementById('tick-sell-count').textContent = '0';
+            document.getElementById('tick-buy-volume').textContent = '0';
+            document.getElementById('tick-sell-volume').textContent = '0';
+            return;
+        }
+        let buyCount = 0;
+        let sellCount = 0;
+        let buyVolume = 0;
+        let sellVolume = 0;
+        trades.forEach(item => {
+            const sideText = String(item.side || '');
+            const volume = Number(item.volume_lot || 0);
+            if (sideText.includes('买') || sideText.toLowerCase().includes('buy')) {
+                buyCount += 1;
+                buyVolume += volume;
+            } else if (sideText.includes('卖') || sideText.toLowerCase().includes('sell')) {
+                sellCount += 1;
+                sellVolume += volume;
+            }
+        });
+        document.getElementById('tick-buy-count').textContent = formatNumber(buyCount, 0);
+        document.getElementById('tick-sell-count').textContent = formatNumber(sellCount, 0);
+        document.getElementById('tick-buy-volume').textContent = formatNumber(buyVolume, 0);
+        document.getElementById('tick-sell-volume').textContent = formatNumber(sellVolume, 0);
+        box.className = 'tick-list';
+        box.innerHTML = trades.slice(-20).reverse().map(item => `
+            <div class="tick-row">
+                <span>${item.timestamp || '-'}</span>
+                <span class="${String(item.side || '').includes('买') ? 'neg' : (String(item.side || '').includes('卖') ? 'pos' : '')}">${Number(item.price || 0).toFixed(2)}</span>
+                <span>${formatNumber(item.volume_lot || 0, 0)} 手</span>
+                <span>${item.side || '-'}</span>
+            </div>
+        `).join('');
+    }
+
+    async function fetchJson(url, options = undefined) {
+        const resp = await fetch(url, options);
+        const payload = await resp.json();
+        if (!resp.ok) {
+            throw new Error(payload.detail || '请求失败');
+        }
+        return payload;
+    }
+
+    async function loadStored() {
+        const period = document.getElementById('intraday-period').value;
+        setStatus('正在读取已落库分时数据...');
+        try {
+            const [barsPayload, ticksPayload] = await Promise.all([
+                fetchJson(`/api/intraday/${stockCode}?use_storage=true&period=${encodeURIComponent(period)}&limit=240`),
+                fetchJson(`/api/intraday/${stockCode}/ticks?use_storage=true&limit=120`),
+            ]);
+            latestBars = barsPayload.bars || [];
+            latestTrades = ticksPayload.trades || [];
+            drawBars(latestBars);
+            updateMeta(latestBars);
+            renderTicks(latestTrades);
+            setStatus(`已加载：K线 ${latestBars.length} 条，逐笔 ${latestTrades.length} 条`);
+        } catch (error) {
+            setStatus(`读取失败：${error.message || error}`);
+        }
+    }
+
+    async function syncAndLoad() {
+        const period = document.getElementById('intraday-period').value;
+        const startValue = document.getElementById('intraday-start').value;
+        const endValue = document.getElementById('intraday-end').value;
+        const params = new URLSearchParams({ period, include_ticks: 'true' });
+        if (startValue) params.set('start_datetime', startValue);
+        if (endValue) params.set('end_datetime', endValue);
+        setStatus('正在同步 freebest 并落库...');
+        try {
+            const payload = await fetchJson(`/api/intraday/${stockCode}/sync?${params.toString()}`, { method: 'POST' });
+            setStatus(`同步完成：K线 ${payload.saved_bars} 条，逐笔 ${payload.saved_ticks} 条`);
+            await loadStored();
+        } catch (error) {
+            setStatus(`同步失败：${error.message || error}`);
+            if (latestBars.length || latestTrades.length) {
+                drawBars(latestBars);
+                updateMeta(latestBars);
+                renderTicks(latestTrades);
+            } else {
+                await loadStored();
+            }
+        }
+    }
+
+    function setupAutoRefresh() {
+        if (autoRefreshTimer) {
+            clearInterval(autoRefreshTimer);
+            autoRefreshTimer = null;
+        }
+        const enabled = document.getElementById('auto-refresh-toggle').checked;
+        const interval = Number(document.getElementById('auto-refresh-interval').value || 15000);
+        if (!enabled) return;
+        autoRefreshTimer = setInterval(() => {
+            loadStored();
+        }, interval);
+    }
+
+    document.getElementById('intraday-sync-btn').addEventListener('click', syncAndLoad);
+    document.getElementById('intraday-load-btn').addEventListener('click', loadStored);
+    document.getElementById('intraday-period').addEventListener('change', loadStored);
+    document.getElementById('auto-refresh-toggle').addEventListener('change', setupAutoRefresh);
+    document.getElementById('auto-refresh-interval').addEventListener('change', setupAutoRefresh);
+    window.addEventListener('resize', () => drawBars(latestBars));
+    initDefaultRange();
+    latestBars = preloadedBars;
+    latestTrades = preloadedTicks;
+    if (latestBars.length || latestTrades.length) {
+        drawBars(latestBars);
+        updateMeta(latestBars);
+        renderTicks(latestTrades);
+        setStatus(`已直接渲染：K线 ${latestBars.length} 条，逐笔 ${latestTrades.length} 条`);
+    }
+    setupAutoRefresh();
+    if (!latestBars.length && !latestTrades.length) {
+        loadStored();
+    }
+</script>
+</body>
+</html>

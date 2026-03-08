@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from typing import Any
 
 from .llm_client import LLMApiClient
+from .llm_usage_store import LLMUsageStore
 
 
 @dataclass
@@ -27,6 +29,7 @@ class LLMDecisionEngine:
         api_base: str,
         chat_path: str = "/chat/completions",
         timeout_seconds: int = 20,
+        usage_store: LLMUsageStore | None = None,
     ) -> None:
         self.client = LLMApiClient(
             api_base=api_base,
@@ -34,6 +37,8 @@ class LLMDecisionEngine:
             model=model_name,
             chat_path=chat_path,
             timeout_seconds=timeout_seconds,
+            usage_store=usage_store,
+            feature_name="decision_engine",
         )
 
     def decide(
@@ -45,6 +50,7 @@ class LLMDecisionEngine:
         pnl_percent: float,
         max_drawdown: float,
         memory_context: list[str],
+        evidence_bundle: dict[str, Any] | None = None,
     ) -> AIDecision:
         llm_decision = self._decide_by_llm(
             stock_code=stock_code,
@@ -54,6 +60,7 @@ class LLMDecisionEngine:
             pnl_percent=pnl_percent,
             max_drawdown=max_drawdown,
             memory_context=memory_context,
+            evidence_bundle=evidence_bundle,
         )
         if llm_decision:
             return llm_decision
@@ -78,7 +85,9 @@ class LLMDecisionEngine:
         pnl_percent: float,
         max_drawdown: float,
         memory_context: list[str],
+        evidence_bundle: dict[str, Any] | None,
     ) -> AIDecision | None:
+        evidence_text = json.dumps(evidence_bundle or {}, ensure_ascii=False)[:2600]
         prompt = (
             "你是A股交易决策引擎，不要写空话。"
             "请只输出JSON，不要输出markdown代码块。"
@@ -90,7 +99,8 @@ class LLMDecisionEngine:
             f"参考风险分数(SQS): {score:.1f}\n"
             f"当前收益: {pnl_percent:.2f}%\n"
             f"最大回撤: {max_drawdown:.2f}%\n"
-            f"记忆证据: {' | '.join(memory_context[:8]) if memory_context else '无'}"
+            f"记忆证据: {' | '.join(memory_context[:8]) if memory_context else '无'}\n"
+            f"结构化证据包: {evidence_text if evidence_text and evidence_text != '{}' else '无'}"
         )
         messages = [
             {"role": "system", "content": "你是严谨的A股交易分析员，结论必须可证伪。"},

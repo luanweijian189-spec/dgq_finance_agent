@@ -79,3 +79,40 @@ class StockKnowledgeStore:
     def search(self, stock_code: str, stock_name: str = "", limit: int = 6) -> list[str]:
         rows = self.search_entries(stock_code=stock_code, stock_name=stock_name, limit=limit)
         return [f"{row.get('ts', '')} {row.get('entry_type', '')} {row.get('content', '')}" for row in rows]
+
+    def list_recent_entries(
+        self,
+        limit: int = 10,
+        entry_types: Optional[set[str]] = None,
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for file_path in self.base_dir.glob("*.jsonl"):
+            try:
+                with file_path.open("r", encoding="utf-8") as fp:
+                    for line in fp:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            payload = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        entry_type = str(payload.get("entry_type") or "")
+                        if entry_types and entry_type not in entry_types:
+                            continue
+                        rows.append(
+                            {
+                                "ts": str(payload.get("ts") or ""),
+                                "stock_code": str(payload.get("stock_code") or ""),
+                                "stock_name": str(payload.get("stock_name") or ""),
+                                "source": str(payload.get("source") or ""),
+                                "operator": str(payload.get("operator") or ""),
+                                "entry_type": entry_type,
+                                "content": str(payload.get("content") or ""),
+                            }
+                        )
+            except Exception:
+                continue
+
+        rows.sort(key=lambda item: item.get("ts", ""), reverse=True)
+        return rows[:limit]

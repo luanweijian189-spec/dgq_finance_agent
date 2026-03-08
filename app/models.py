@@ -94,6 +94,41 @@ class DailyPerformance(Base):
     recommendation: Mapped[Recommendation] = relationship(back_populates="daily_performance")
 
 
+class StockDailyMaintenance(Base):
+    __tablename__ = "stock_daily_maintenance"
+    __table_args__ = (
+        UniqueConstraint("stock_code", "market_date", name="uq_stock_daily_maintenance_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    stock_code: Mapped[str] = mapped_column(String(16), index=True)
+    stock_name: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    market_date: Mapped[date] = mapped_column(Date, index=True)
+    reference_price: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    latest_price: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    change_amount: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    change_percent: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    average_price: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    high_price: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    low_price: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    volume_lot: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    amount: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    bar_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    tick_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    buy_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    sell_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    buy_volume_lot: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    sell_volume_lot: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    latest_bar_timestamp: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    latest_tick_timestamp: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    reference_source: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    data_source: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    summary_text: Mapped[str] = mapped_column(Text, default="", server_default="")
+    payload_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class AlertSubscription(Base):
     __tablename__ = "alert_subscriptions"
     __table_args__ = (
@@ -152,5 +187,55 @@ class StockPrediction(Base):
     review_result: Mapped[str] = mapped_column(String(32), default="pending", server_default="pending")
     review_notes: Mapped[str] = mapped_column(Text, default="", server_default="")
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class IntradayBarRecord(Base):
+    __tablename__ = "intraday_bars"
+    __table_args__ = (
+        UniqueConstraint("stock_code", "period", "adjust", "timestamp", name="uq_intraday_bar_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    stock_code: Mapped[str] = mapped_column(String(16), index=True)
+    stock_name: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    period: Mapped[str] = mapped_column(String(8), default="1", server_default="1", index=True)
+    adjust: Mapped[str] = mapped_column(String(8), default="", server_default="", index=True)
+    timestamp: Mapped[str] = mapped_column(String(32), index=True)
+    trading_day: Mapped[str] = mapped_column(String(10), default="", server_default="", index=True)
+    open_price: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    close_price: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    high_price: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    low_price: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    volume: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    amount: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    amplitude: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    change_percent: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    change_amount: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    turnover_rate: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    source: Mapped[str] = mapped_column(String(32), default="akshare", server_default="akshare")
+    used_cache: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class IntradayTradeTick(Base):
+    __tablename__ = "intraday_ticks"
+    __table_args__ = (
+        UniqueConstraint("stock_code", "trading_day", "row_index", name="uq_intraday_tick_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    stock_code: Mapped[str] = mapped_column(String(16), index=True)
+    stock_name: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    trading_day: Mapped[str] = mapped_column(String(10), default="", server_default="", index=True)
+    row_index: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    timestamp: Mapped[str] = mapped_column(String(16), index=True)
+    price: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    volume_lot: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    side: Mapped[str] = mapped_column(String(16), default="", server_default="")
+    source: Mapped[str] = mapped_column(String(32), default="akshare", server_default="akshare")
+    used_cache: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

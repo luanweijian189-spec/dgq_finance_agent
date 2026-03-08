@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "dgq-finance-agent"
-    app_env: str = "dev"
+    app_env: str = "prod"
     debug: bool = False
 
     database_url: str = Field(
@@ -23,8 +23,15 @@ class Settings(BaseSettings):
     scheduler_news_scan_cron: str = "*/20 9-15 * * 1-5"
 
     market_data_provider: str = "baostock"
-    news_data_provider: str = "tushare"
+    intraday_data_provider: str = "freebest"
+    news_data_provider: str = "sites"
     tushare_token: str = ""
+    intraday_cache_dir: str = "data/intraday"
+    intraday_request_interval_seconds: float = 1.2
+    intraday_max_retries: int = 2
+    intraday_pytdx_hosts: str = ""
+    intraday_pytdx_bar_count: int = 800
+    intraday_pytdx_tick_limit: int = 2000
     news_webhook_url: str = ""
     news_site_whitelist: str = (
         "https://www.eastmoney.com,https://finance.sina.com.cn,https://www.stcn.com,https://www.cnstock.com"
@@ -38,11 +45,12 @@ class Settings(BaseSettings):
     rag_store_path: str = "data/research_notes.jsonl"
     stock_knowledge_dir: str = "data/stocks"
     daily_report_dir: str = "reports/daily"
+    llm_usage_store_path: str = "data/llm_usage.jsonl"
     memory_backend: str = "jsonl"
     memory_retrieval_limit: int = 8
 
-    analysis_model: str = "gpt-5.3-codex"
-    llm_api_base: str = ""
+    analysis_model: str = "qwen2.5:3b"
+    llm_api_base: str = "http://127.0.0.1:11434/v1"
     llm_api_key: str = ""
     llm_api_chat_path: str = "/chat/completions"
     llm_api_timeout_seconds: int = 15

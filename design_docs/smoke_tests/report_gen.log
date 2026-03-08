@@ -1,0 +1,25 @@
+/Users/weijianluan/luan/finance/dgq_finance_agent/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+  0%|          | 0/65 [00:00<?, ?it/s]  2%|▏         | 1/65 [00:00<00:09,  6.81it/s]  3%|▎         | 2/65 [00:00<00:09,  6.78it/s]  5%|▍         | 3/65 [00:00<00:09,  6.62it/s]  6%|▌         | 4/65 [00:01<00:25,  2.41it/s]                                              Traceback (most recent call last):
+  File "/Users/weijianluan/luan/finance/dgq_finance_agent/.venv/lib/python3.9/site-packages/requests/models.py", line 974, in json
+    return complexjson.loads(self.text, **kwargs)
+  File "/Users/weijianluan/luan/finance/dgq_finance_agent/.venv/lib/python3.9/site-packages/simplejson/__init__.py", line 514, in loads
+    return _default_decoder.decode(s)
+  File "/Users/weijianluan/luan/finance/dgq_finance_agent/.venv/lib/python3.9/site-packages/simplejson/decoder.py", line 386, in decode
+    obj, end = self.raw_decode(s)
+  File "/Users/weijianluan/luan/finance/dgq_finance_agent/.venv/lib/python3.9/site-packages/simplejson/decoder.py", line 416, in raw_decode
+    return self.scan_once(s, idx=_w(s, idx).end())
+simplejson.errors.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/weijianluan/luan/finance/dgq_finance_agent/scripts/generate_intraday_smoke_report.py", line 179, in <module>
+    main()
+  File "/Users/weijianluan/luan/finance/dgq_finance_agent/scripts/generate_intraday_smoke_report.py", line 73, in main
+    tick_df = ak.stock_intraday_sina(symbol="sz002384", date=trade_date_compact).copy()
+  File "/Users/weijianluan/luan/finance/dgq_finance_agent/.venv/lib/python3.9/site-packages/akshare/stock/stock_intraday_sina.py", line 56, in stock_intraday_sina
+    data_json = r.json()
+  File "/Users/weijianluan/luan/finance/dgq_finance_agent/.venv/lib/python3.9/site-packages/requests/models.py", line 978, in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+requests.exceptions.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
