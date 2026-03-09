@@ -6,6 +6,8 @@ from typing import Iterable
 
 import requests
 
+from .qq_official_bot import get_qq_official_bot_client
+
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,33 @@ class QQBotNotifier(AlertNotifier):
             timeout=5,
         )
         response.raise_for_status()
+
+
+class QQOfficialBotNotifier(AlertNotifier):
+    def __init__(
+        self,
+        app_id: str,
+        app_secret: str,
+        target_type: str = "group",
+        target_id: str = "",
+        api_base_url: str = "https://api.sgroup.qq.com",
+        token_url: str = "https://bots.qq.com/app/getAppAccessToken",
+        timeout_seconds: int = 10,
+    ) -> None:
+        self.target_type = (target_type or "group").strip().lower()
+        self.target_id = str(target_id or "").strip()
+        self.client = get_qq_official_bot_client(
+            str(app_id or "").strip(),
+            str(app_secret or "").strip(),
+            str(api_base_url or "https://api.sgroup.qq.com").strip(),
+            str(token_url or "https://bots.qq.com/app/getAppAccessToken").strip(),
+            max(int(timeout_seconds or 10), 3),
+        )
+
+    def send(self, title: str, content: str) -> None:
+        if not self.target_id:
+            raise ValueError("qq official bot notifier missing target_id")
+        self.client.send_text(self.target_type, self.target_id, f"{title}\n{content}".strip())
 
 
 class OpenClawNotifier(AlertNotifier):

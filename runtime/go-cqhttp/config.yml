@@ -1,0 +1,56 @@
+account:
+  uin: 1612085779
+  password: ''
+  encrypt: false
+  status: 0
+  relogin:
+    delay: 3
+    interval: 3
+    max-times: 0
+  use-sso-address: true
+
+heartbeat:
+  interval: 5
+
+message:
+  post-format: string
+  ignore-invalid-cqcode: false
+  force-fragment: false
+  fix-url: false
+  proxy-rewrite: ''
+  report-self-message: false
+  remove-reply-at: false
+  extra-reply-data: false
+  skip-mime-scan: false
+  convert-webp-image: false
+  http-timeout: 15
+
+output:
+  log-level: info
+  log-aging: 15
+  log-force-new: true
+  debug: false
+
+default-middlewares: &default
+  access-token: 'lJtzsxKNpVIyYNdSq08qd03GazQWaffoHMIAi7E1-sE'
+  filter: ''
+  rate-limit:
+    enabled: false
+    frequency: 1
+    bucket: 1
+
+servers:
+  - http:
+      address: 127.0.0.1:5700
+      version: 11
+      timeout: 15
+      long-polling:
+        enabled: false
+        max-queue-size: 2000
+      middlewares:
+        <<: *default
+      post:
+        - url: http://127.0.0.1:5701/webhook
+          secret: ''
+          max-retries: 10
+          retries-interval: 1000

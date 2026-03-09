@@ -1,0 +1,18 @@
+[Unit]
+Description=DGQ QQ OneBot Relay Service
+After=network-online.target dgq-finance-agent.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/dgq_finance_agent
+EnvironmentFile=/home/ubuntu/dgq_finance_agent/.env
+ExecStart=/home/ubuntu/dgq_finance_agent/scripts/start_qq_onebot_relay.sh
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

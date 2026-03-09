@@ -1,0 +1,19 @@
+[Unit]
+Description=DGQ Finance Agent FastAPI Service
+After=network-online.target
+Wants=network-online.target
+After=postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/dgq_finance_agent
+EnvironmentFile=/home/ubuntu/dgq_finance_agent/.env
+ExecStart=/home/ubuntu/dgq_finance_agent/scripts/start_prod_server.sh
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

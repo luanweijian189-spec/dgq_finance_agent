@@ -103,3 +103,4 @@
 {"ts": "2026-03-09T01:12:42.882968", "source": "manual_bulk", "recommender_name": "研究员A", "text": "关注电芯片与Tower方向。"}
 {"ts": "2026-03-09T01:12:42.958147", "source": "manual_stock_research", "recommender_name": "研究员A", "text": "东山精密：下周重点看订单验证。"}
 {"ts": "2026-03-09T01:12:42.958645", "source": "manual_macro_research", "recommender_name": "研究员B", "text": "宏观观察：风险偏好仍需等待进一步修复。"}
+{"ts": "2026-03-09T13:58:07.922232", "source": "openclaw_qq", "recommender_name": "QQ群友A", "text": "002436 看好，逻辑是订单增长与景气回暖"}

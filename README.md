@@ -111,21 +111,23 @@ docker compose up --build
 - `POST /api/commands`：执行 Agent 指令（`/status /who /top /worst /add /alert on`）。
 - `POST /api/alerts/subscribe`：订阅股票告警。
 - `POST /api/connectors/wechat/webhook`：Wechaty/OpenClaw 转发入口。
+- `POST /api/connectors/openclaw/webhook`：OpenClaw / QQ 双向通信入口，支持入库与命令回执。
+- `POST /api/connectors/qq/webhook`：与 OpenClaw webhook 等价的 QQ 别名入口。
 - `GET /api/system/check`：数据库 + 行情源 +新闻源可用性检查。
 - `POST /api/news/scan`：执行新闻定时扫描（可手动触发）。
 - `GET /api/news/candidates`：查看候选新股队列。
 - `POST /api/news/candidates/promote`：将候选新股晋升到跟踪池。
 
-## QQ 通知（优先官方 OpenClaw 方案）
+## QQ 通知与双向通信
 
-当前实现的是一版可插拔通知通道：
+当前实现的是一版可插拔 QQ 通道：
 
 1. 系统按 `SCHEDULER_INTRADAY_REFRESH_CRON` 定频刷新活跃股票池的盘中数据。
 2. 每轮会比较刷新前后的维护快照。
 3. 当涨跌幅变化超过 `SCHEDULER_INTRADAY_REFRESH_MIN_CHANGE_PERCENT` 时，自动生成摘要消息。
 4. 消息会同时发往 stdout、通用 webhook，以及可选的 QQ 通道。
 
-### 方案 A：官方 OpenClaw QQ 通道（推荐）
+### 方案 A：官方 OpenClaw QQ 通道（仅出站，推荐保留）
 
 如果你已经在腾讯云 / OpenClaw 环境里把 QQ channel 配好了，系统可以直接调用 OpenClaw CLI 发消息。
 
@@ -154,7 +156,45 @@ openclaw --dev agent --channel qq --deliver -m '盘中刷新 10:35
 - `SCHEDULER_INTRADAY_REFRESH_LIMIT=12`
 - `SCHEDULER_INTRADAY_REFRESH_MIN_CHANGE_PERCENT=0.8`
 
-### 方案 B：HTTP 中继 QQ Bot（保留兼容）
+### 方案 B：QQ 开放平台官方 Bot（推荐做双向通信）
+
+当前代码已补齐官方 QQ Bot 的最小闭环：
+
+- 官方回调入口：`POST /api/connectors/qq/official/webhook`
+- 回调校验：支持 `op=13` 的 `plain_token` 验证回包
+- 回调验签：校验 `X-Signature-Ed25519` / `X-Signature-Timestamp`
+- 事件支持：`GROUP_AT_MESSAGE_CREATE`、`C2C_MESSAGE_CREATE`
+- 事件处理：复用现有荐股入库 / `/status`、`/who` 等命令处理链路
+- 自动回信：后端拿到 `reply_message` 后，直接调用 QQ 官方 OpenAPI 回发
+
+环境变量：
+
+- `QQ_OFFICIAL_BOT_ENABLED=true`
+- `QQ_OFFICIAL_BOT_APP_ID=你的AppID`
+- `QQ_OFFICIAL_BOT_APP_SECRET=你的AppSecret`
+- `QQ_OFFICIAL_BOT_API_BASE_URL=https://api.sgroup.qq.com`
+- `QQ_OFFICIAL_BOT_TOKEN_URL=https://bots.qq.com/app/getAppAccessToken`
+- `QQ_OFFICIAL_BOT_TARGET_TYPE=group`
+- `QQ_OFFICIAL_BOT_TARGET_ID=`（仅主动通知时需要）
+
+回调地址示例：
+
+- `https://你的域名/api/connectors/qq/official/webhook`
+
+临时验证 HTTPS（不买域名先验证链路）：
+
+- 可先用基于公网 IP 的临时域名，例如 `https://58-87-91-152.sslip.io`
+- 仓库已提供脚本：[scripts/setup_temp_https_sslip.sh](scripts/setup_temp_https_sslip.sh)
+- 示例：`sudo LETSENCRYPT_EMAIL=you@example.com bash scripts/setup_temp_https_sslip.sh`
+- 配置完成后，可先把 QQ 平台回调地址临时填为：`https://58-87-91-152.sslip.io/api/connectors/qq/official/webhook`
+- 验证通过后，再替换成正式自有域名即可
+
+联调脚本：
+
+- 参数打印：[scripts/print_qq_official_bot_setup_info.sh](scripts/print_qq_official_bot_setup_info.sh)
+- 冒烟脚本：[scripts/smoke_qq_official_webhook.sh](scripts/smoke_qq_official_webhook.sh)
+
+### 方案 C：HTTP 中继 QQ Bot（保留兼容）
 
 如果你暂时不走 OpenClaw，也仍可使用已有 HTTP 中继模式：
 
@@ -166,8 +206,15 @@ openclaw --dev agent --channel qq --deliver -m '盘中刷新 10:35
 
 ### 接入说明
 
-- 优先建议用 OpenClaw 已配置好的 QQ channel，这样通知侧完全复用官方支持链路。
-- HTTP 中继模式仅作为兼容兜底保留。
+- 出站通知优先建议用 OpenClaw 已配置好的 QQ channel。
+- 双向通信优先建议用 QQ 开放平台官方 Bot 回调到 `POST /api/connectors/qq/official/webhook`。
+- OpenClaw webhook 和 OneBot / NapCat / go-cqhttp 中继模式继续保留，作为兼容兜底。
+- 若暂时不走官方回调，也仍可把 QQ / OpenClaw 收到的新消息回调到后端的 `POST /api/connectors/openclaw/webhook`。
+- 该 webhook 会自动区分两类消息：
+   - 普通文本：尝试识别荐股并入库；识别失败时按研究笔记归档。
+   - 斜杠命令：如 `/who 张三`、`/status 002436`，会直接执行并返回 `reply_message`，供 OpenClaw 回发到 QQ。
+- 生产环境建议配置 `CONNECTOR_SHARED_TOKEN`，并让 OpenClaw / OneBot 等兼容连接器通过 `X-Connector-Token` 请求头或 Bearer Token 传入。
+- QQ 官方回调不依赖 `CONNECTOR_SHARED_TOKEN`，而是走平台签名校验。
 - HTTP 请求体示例：
 
 ```json
@@ -177,7 +224,314 @@ openclaw --dev agent --channel qq --deliver -m '盘中刷新 10:35
 }
 ```
 
-如果你本地已经有 NapCat 或 go-cqhttp 风格 HTTP 服务，这版也可以直接接上。
+如果你本地已经有 NapCat 或 go-cqhttp 风格 HTTP 服务，这版也可以继续接上。
+
+## 腾讯云 + OpenClaw + QQ 推荐链路
+
+当前代码库的现状可以概括为：
+
+1. **出站通知已具备**：系统可通过 [app/notifier.py](app/notifier.py#L100-L138) 里的 `OpenClawNotifier` 或 `QQOfficialBotNotifier` 主动把盘中刷新、日报、告警发到 QQ。
+2. **官方入站已补齐**：系统现已支持 [app/main.py](app/main.py#L1159-L1218) 的 QQ 官方回调，把群 / C2C 消息写入股票池，或把 `/status`、`/who` 这类命令直接回执给 QQ。
+3. **兼容入站仍保留**：OpenClaw / QQ 兼容 webhook 仍可继续使用，见 [app/main.py](app/main.py#L1149-L1157)。
+4. **生产配置默认未开启**：当前 [.env.example](.env.example#L66-L74) 中 `QQ_OFFICIAL_BOT_*` 默认都关闭，需要在腾讯云上显式填写。
+
+推荐部署拓扑：
+
+- 腾讯云主机运行本项目 FastAPI
+- QQ 官方平台回调 -> `POST /api/connectors/qq/official/webhook`
+- 后端返回 `reply_message` -> 调用 `https://api.sgroup.qq.com/v2/groups/{group_id}/messages` 或 `/v2/users/{user_id}/messages`
+- 定时任务 / 风险告警 -> `QQOfficialBotNotifier` 或 `OpenClawNotifier` -> QQ
+- 如需兼容历史链路，可继续保留 OpenClaw webhook / OneBot relay
+
+建议至少开启这些环境变量：
+
+```bash
+QQ_OFFICIAL_BOT_ENABLED=true
+QQ_OFFICIAL_BOT_APP_ID=请填写官方 AppID
+QQ_OFFICIAL_BOT_APP_SECRET=请填写官方 AppSecret
+QQ_OFFICIAL_BOT_API_BASE_URL=https://api.sgroup.qq.com
+OPENCLAW_NOTIFIER_ENABLED=true
+SCHEDULER_INTRADAY_REFRESH_ENABLED=true
+```
+
+仓库内已补齐可直接复用的生产模板：
+
+- 腾讯云生产环境变量模板：[.env.tencent.example](.env.tencent.example)
+- systemd 服务模板：[deploy/tencent/dgq-finance-agent.service](deploy/tencent/dgq-finance-agent.service)
+- Nginx 反向代理模板：[deploy/tencent/nginx.dgq-finance-agent.conf](deploy/tencent/nginx.dgq-finance-agent.conf)
+- 腾讯云初始化脚本：[scripts/setup_tencent_prod.sh](scripts/setup_tencent_prod.sh)
+- 腾讯云系统依赖安装脚本：[scripts/install_tencent_system_packages.sh](scripts/install_tencent_system_packages.sh)
+- 腾讯云 PostgreSQL 安装脚本：[scripts/install_tencent_postgres.sh](scripts/install_tencent_postgres.sh)
+- 生产启动入口脚本：[scripts/start_prod_server.sh](scripts/start_prod_server.sh)
+- QQ 官方 Bot 参数打印脚本：[scripts/print_qq_official_bot_setup_info.sh](scripts/print_qq_official_bot_setup_info.sh)
+- QQ 官方 Bot 回调冒烟脚本：[scripts/smoke_qq_official_webhook.sh](scripts/smoke_qq_official_webhook.sh)
+- OpenClaw QQ 参数打印脚本：[scripts/print_openclaw_qq_setup_info.sh](scripts/print_openclaw_qq_setup_info.sh)
+- go-cqhttp 接入信息脚本：[scripts/print_go_cqhttp_setup_info.sh](scripts/print_go_cqhttp_setup_info.sh)
+- 手机访问基础认证脚本：[scripts/enable_mobile_basic_auth.sh](scripts/enable_mobile_basic_auth.sh)
+- 腾讯云公网访问检查脚本：[scripts/print_tencent_public_access_info.sh](scripts/print_tencent_public_access_info.sh)
+- OpenClaw / QQ webhook 冒烟脚本：[scripts/smoke_openclaw_qq_webhook.sh](scripts/smoke_openclaw_qq_webhook.sh)
+- OneBot / NapCat QQ webhook 冒烟脚本：[scripts/smoke_onebot_group_webhook.sh](scripts/smoke_onebot_group_webhook.sh)
+- QQ OneBot relay 启动脚本：[scripts/start_qq_onebot_relay.sh](scripts/start_qq_onebot_relay.sh)
+- QQ OneBot relay systemd 模板：[deploy/tencent/qq-onebot-relay.service](deploy/tencent/qq-onebot-relay.service)
+
+### 腾讯云一键初始化
+
+在腾讯云机器上进入项目目录后，可先执行：
+
+```bash
+sudo bash scripts/install_tencent_system_packages.sh
+bash scripts/setup_tencent_prod.sh
+```
+
+该脚本会自动完成：
+
+1. 生成 `.venv`
+2. 安装 Python 依赖
+3. 若 `.env` 不存在，则按 [.env.tencent.example](.env.tencent.example) 生成
+4. 自动生成 `CONNECTOR_SHARED_TOKEN`
+5. 打开 `OPENCLAW_NOTIFIER_ENABLED=true`
+6. 打开 `SCHEDULER_INTRADAY_REFRESH_ENABLED=true`
+7. 执行 `alembic upgrade head`
+
+如果你已经拿到 QQ 官方 `AppID` / `AppSecret`，建议初始化后再执行：
+
+```bash
+bash scripts/print_qq_official_bot_setup_info.sh
+bash scripts/smoke_qq_official_webhook.sh
+```
+
+若遇到 `connection to server at "127.0.0.1", port 5432 failed: Connection refused`，说明 PostgreSQL 还没启动。此时可任选一种方式：
+
+#### 方案 A：安装本机 PostgreSQL
+
+```bash
+sudo bash scripts/install_tencent_postgres.sh
+SKIP_PIP=1 bash scripts/setup_tencent_prod.sh
+```
+
+#### 方案 B：若已安装 Docker，则启动数据库容器
+
+```bash
+docker compose up -d db
+SKIP_PIP=1 bash scripts/setup_tencent_prod.sh
+```
+
+如果机器上暂时没有 `python3-venv`，可退化为：
+
+```bash
+USE_SYSTEM_PYTHON=1 bash scripts/setup_tencent_prod.sh
+```
+
+### systemd 部署
+
+可将 [deploy/tencent/dgq-finance-agent.service](deploy/tencent/dgq-finance-agent.service) 安装到系统服务目录：
+
+```bash
+sudo cp deploy/tencent/dgq-finance-agent.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now dgq-finance-agent
+sudo systemctl status dgq-finance-agent
+```
+
+说明：当前 service 已改为调用 [scripts/start_prod_server.sh](scripts/start_prod_server.sh)，会优先使用 `.venv/bin/python`，若虚拟环境不存在则回退到系统 `python3`。
+
+### Nginx 反向代理
+
+可将 [deploy/tencent/nginx.dgq-finance-agent.conf](deploy/tencent/nginx.dgq-finance-agent.conf) 放到 Nginx 站点配置目录后重载：
+
+```bash
+sudo cp deploy/tencent/nginx.dgq-finance-agent.conf /etc/nginx/conf.d/dgq-finance-agent.conf
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+如果机器上还没安装 Nginx，先执行：
+
+```bash
+sudo bash scripts/install_tencent_system_packages.sh
+```
+
+若暂时不装 Nginx，也可先直接访问 `http://云服务器IP:8000/`。
+
+给 OpenClaw / QQ 回调后端时，建议发送类似负载：
+
+```json
+{
+   "channel": "qq",
+   "message": "002384 看好，逻辑是消费电子复苏",
+   "sender_name": "群友A",
+   "sender_id": "123456",
+   "group_name": "DGQ测试群",
+   "group_id": "987654"
+}
+```
+
+如果消息是命令：
+
+```json
+{
+   "channel": "qq",
+   "text": "/status 002384",
+   "sender_name": "群友A",
+   "sender_id": "123456",
+   "group_name": "DGQ测试群"
+}
+```
+
+后端会返回：
+
+- `action=ingest` / `research` / `command`
+- `reply_message`
+
+其中 `reply_message` 可直接由 OpenClaw 回发到 QQ 群，形成闭环。
+
+### 你当前这套 QQ 接入如何落地
+
+你已确认：
+
+- 接收群消息的 QQ 账号：`1612085779`
+- 测试群：`finance-robot`
+
+本项目后端已经就绪，但 **OpenClaw 那一侧仍需要你本人完成一次登录/绑定**。原因很简单：
+
+- 登录 QQ 往往需要扫码或人工确认
+- 这一步不能由后端代码替你完成
+
+后端这边你已经可以直接打印出接线参数：
+
+```bash
+bash scripts/print_openclaw_qq_setup_info.sh
+```
+
+这个脚本会输出：
+
+- webhook 地址
+- `X-Connector-Token`
+- 默认 QQ 账号/测试群信息
+- 一条可直接联调的 `curl` 示例
+
+你需要在 OpenClaw / QQ 连接器里完成的动作只有这些：
+
+1. 用 `1612085779` 登录 QQ 连接器
+2. 让它监听群 `finance-robot`
+3. 收到群消息后，转发到：
+   - `POST /api/connectors/openclaw/webhook`
+4. 请求头带上：
+   - `X-Connector-Token: <你的 CONNECTOR_SHARED_TOKEN>`
+5. 把后端返回的 `reply_message` 再回发到 `finance-robot`
+
+如果 OpenClaw 那边已经能把 QQ 消息转成 HTTP 回调，这一步就够了；本项目后端不用再保存 QQ 密码。
+
+### 多手机访问云端前端
+
+可以，且推荐这么用。
+
+当前前端已经有移动端 viewport 和响应式样式：
+
+- [app/templates/dashboard.html](app/templates/dashboard.html)
+- [app/templates/stock_detail.html](app/templates/stock_detail.html)
+
+所以只要服务放在腾讯云上，多部手机都能直接通过浏览器访问同一个云端页面。
+
+为避免公网裸露，建议开启基础认证。仓库已补脚本：
+
+```bash
+bash scripts/enable_mobile_basic_auth.sh
+sudo systemctl restart dgq-finance-agent
+```
+
+执行后会自动写入：
+
+- `WEB_BASIC_AUTH_ENABLED=true`
+- `WEB_BASIC_AUTH_USERNAME=...`
+- `WEB_BASIC_AUTH_PASSWORD=...`
+
+认证逻辑已内置在 [app/main.py](app/main.py) 中：
+
+- 浏览器访问前端时会弹出 Basic Auth 登录框
+- `/health` 与连接器 webhook 默认放行，不受影响
+
+如果你后续再配上 Nginx + 域名 + HTTPS，那么多手机访问就会非常顺手。
+
+如果本机可访问、但手机和电脑外网访问不了，通常是 **腾讯云安全组没有放行 80 端口**。可先打印检查信息：
+
+```bash
+bash scripts/print_tencent_public_access_info.sh
+```
+
+最少需要在腾讯云安全组中放行：
+
+- TCP 80（前端页面）
+- TCP 443（后续 HTTPS）
+- 可选 TCP 8000（调试直连）
+
+### QQ 真接入的现实建议
+
+经实际排查，当前通过 `pip install openclaw` 安装到服务器上的包，本质上是 CMDOP/OpenClaw 的 Python 编排插件，并 **不是** 之前假设的那种 `openclaw --dev agent --channel qq --deliver` 消息 CLI。
+
+所以现阶段要把 QQ 真接进来，最稳的方案是：
+
+1. 使用支持 QQ 的桥接器（如 OneBot / NapCat / go-cqhttp 风格）登录 QQ `1612085779`
+2. 监听群 `finance-robot`
+3. 把群消息按 HTTP 回调转发到：
+   - `POST /api/connectors/qq/webhook`
+4. 带上请求头：
+   - `X-Connector-Token: <CONNECTOR_SHARED_TOKEN>`
+5. 读取后端返回的 `reply_message`，再发回 QQ 群
+
+后端现已兼容 OneBot/NapCat 常见负载格式，群消息和命令都能识别。
+
+可直接用下面脚本做联调：
+
+```bash
+CONNECTOR_TOKEN=$(grep '^CONNECTOR_SHARED_TOKEN=' .env | cut -d= -f2-) \
+bash scripts/smoke_onebot_group_webhook.sh
+```
+
+### 当前推荐桥接器：go-cqhttp
+
+结合你当前环境：
+
+- 服务器类型：腾讯云轻量应用服务器（Linux）
+- 当前没有 Docker
+- 目标是接 QQ 账号 `1612085779` 和群 `finance-robot`
+
+我建议优先使用 **go-cqhttp**，原因是：
+
+1. 更适合 headless Linux 服务器
+2. 原生支持 OneBot 风格 HTTP 上报/调用
+3. 现有后端已经兼容 OneBot 负载
+4. 现有 relay 已补齐“收到消息 -> 调后端 -> 把 reply_message 发回 QQ”闭环
+
+仓库里已经补齐 relay：
+
+- relay 程序：[connectors/qq_onebot_relay/main.py](connectors/qq_onebot_relay/main.py)
+- 启动脚本：[scripts/start_qq_onebot_relay.sh](scripts/start_qq_onebot_relay.sh)
+- systemd 模板：[deploy/tencent/qq-onebot-relay.service](deploy/tencent/qq-onebot-relay.service)
+
+你现在可先打印接入参数：
+
+```bash
+bash scripts/print_go_cqhttp_setup_info.sh
+```
+
+推荐链路如下：
+
+1. `go-cqhttp` 登录 QQ `1612085779`
+2. `go-cqhttp` 监听并收到群 `finance-robot` 的消息
+3. `go-cqhttp` 反向上报到 `http://127.0.0.1:5701/webhook`
+4. relay 把消息转发到 `POST /api/connectors/qq/webhook`
+5. relay 读取后端返回的 `reply_message`
+6. relay 再通过 `go-cqhttp` HTTP API 发回 QQ 群
+
+要启用 relay，后续可执行：
+
+```bash
+sudo cp deploy/tencent/qq-onebot-relay.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now qq-onebot-relay
+sudo systemctl status qq-onebot-relay --no-pager
+```
 
 ## Wechaty / OpenClaw 对接方式
 外部连接器只需把消息转发到 webhook：

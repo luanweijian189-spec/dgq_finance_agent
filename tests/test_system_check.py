@@ -450,3 +450,125 @@ class SystemCheckTests(TestCase):
             app.dependency_overrides.clear()
             db.close()
             engine.dispose()
+
+    def test_openclaw_qq_webhook_ingests_recommendation(self) -> None:
+        engine = create_engine(
+            "sqlite+pysqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(engine)
+        db = Session(engine)
+
+        service = FinanceAgentService(
+            db=db,
+            market_provider=MockMarketDataProvider(),
+            news_provider=MockNewsDataProvider(),
+            notifier=_CollectNotifier(),
+        )
+
+        app.dependency_overrides[get_service] = lambda: service
+        try:
+            client = TestClient(app)
+            response = client.post(
+                "/api/connectors/openclaw/webhook",
+                json={
+                    "channel": "qq",
+                    "message": "002436 看好，逻辑是订单增长与景气回暖",
+                    "sender_name": "QQ群友A",
+                    "sender_id": "qq_user_1",
+                    "group_name": "测试群",
+                },
+            )
+            self.assertEqual(200, response.status_code)
+            payload = response.json()
+            self.assertEqual("ingest", payload["action"])
+            self.assertEqual(1, payload["created"])
+
+            record = db.query(Recommendation).one()
+            self.assertEqual("openclaw_qq", record.source)
+            self.assertEqual("002436", record.stock.stock_code)
+        finally:
+            app.dependency_overrides.clear()
+            db.close()
+            engine.dispose()
+
+    def test_openclaw_qq_webhook_handles_command(self) -> None:
+        engine = create_engine(
+            "sqlite+pysqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(engine)
+        db = Session(engine)
+
+        service = FinanceAgentService(
+            db=db,
+            market_provider=MockMarketDataProvider(),
+            news_provider=MockNewsDataProvider(),
+            notifier=_CollectNotifier(),
+        )
+        service.add_manual_recommendation("002436", "测试逻辑", "QQ群友A", stock_name="兴森科技")
+
+        app.dependency_overrides[get_service] = lambda: service
+        try:
+            client = TestClient(app)
+            response = client.post(
+                "/api/connectors/qq/webhook",
+                json={
+                    "channel": "qq",
+                    "text": "/who QQ群友A",
+                    "sender_name": "QQ群友A",
+                    "sender_id": "qq_user_1",
+                    "group_name": "测试群",
+                },
+            )
+            self.assertEqual(200, response.status_code)
+            payload = response.json()
+            self.assertEqual("command", payload["action"])
+            self.assertIn("QQ群友A", payload["reply_message"])
+            self.assertIn("历史推荐", payload["reply_message"])
+        finally:
+            app.dependency_overrides.clear()
+            db.close()
+            engine.dispose()
+
+    def test_qq_webhook_accepts_onebot_group_payload(self) -> None:
+        engine = create_engine(
+            "sqlite+pysqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(engine)
+        db = Session(engine)
+
+        service = FinanceAgentService(
+            db=db,
+            market_provider=MockMarketDataProvider(),
+            news_provider=MockNewsDataProvider(),
+            notifier=_CollectNotifier(),
+        )
+
+        app.dependency_overrides[get_service] = lambda: service
+        try:
+            client = TestClient(app)
+            response = client.post(
+                "/api/connectors/qq/webhook",
+                json={
+                    "post_type": "message",
+                    "message_type": "group",
+                    "raw_message": "002384 看好，逻辑是消费电子复苏",
+                    "group_id": 123456,
+                    "user_id": 1612085779,
+                    "sender": {"nickname": "QQ群友A"},
+                },
+            )
+            self.assertEqual(200, response.status_code)
+            payload = response.json()
+            self.assertEqual("ingest", payload["action"])
+            self.assertEqual(1, payload["created"])
+            self.assertEqual("qq", payload["channel"])
+        finally:
+            app.dependency_overrides.clear()
+            db.close()
+            engine.dispose()

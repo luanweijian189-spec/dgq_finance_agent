@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import List
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -57,6 +58,19 @@ class Settings(BaseSettings):
     qq_bot_target_type: str = "group"
     qq_bot_target_id: str = ""
     qq_bot_access_token: str = ""
+    qq_official_bot_enabled: bool = False
+    qq_official_bot_app_id: str = ""
+    qq_official_bot_app_secret: str = ""
+    qq_official_bot_api_base_url: str = "https://api.sgroup.qq.com"
+    qq_official_bot_token_url: str = "https://bots.qq.com/app/getAppAccessToken"
+    qq_official_bot_target_type: str = "group"
+    qq_official_bot_target_id: str = ""
+    qq_official_bot_timeout_seconds: int = 10
+    connector_shared_token: str = ""
+    web_basic_auth_enabled: bool = False
+    web_basic_auth_username: str = "admin"
+    web_basic_auth_password: str = ""
+    web_basic_auth_exempt_paths: str = "/health,/api/connectors/openclaw/webhook,/api/connectors/qq/webhook,/api/connectors/qq/official/webhook,/api/connectors/wechat/webhook"
 
     rag_store_path: str = "data/research_notes.jsonl"
     stock_knowledge_dir: str = "data/stocks"
@@ -75,3 +89,7 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
+
+def get_basic_auth_exempt_paths(settings: Settings) -> List[str]:
+    return [item.strip() for item in str(settings.web_basic_auth_exempt_paths or "").split(",") if item.strip()]

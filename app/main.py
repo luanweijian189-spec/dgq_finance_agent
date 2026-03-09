@@ -1,25 +1,47 @@
 from __future__ import annotations
 
+import base64
+import logging
+import secrets
 from datetime import date, datetime
 from threading import Lock, Thread
 from time import perf_counter
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from .agent import OpenClawCommandHandler
 from .analysis_agent import StockAnalysisAgent
-from .config import get_settings
+from .config import get_basic_auth_exempt_paths, get_settings
 from .database import SessionLocal, get_db_session
 from .decision_engine import LLMDecisionEngine
 from .input_parser_agent import LLMInputParserAgent
 from .llm_usage_store import LLMUsageStore
 from .memory import MemoryRetriever
-from .notifier import CompositeNotifier, OpenClawNotifier, QQBotNotifier, StdoutNotifier, WebhookNotifier
+from .notifier import (
+    CompositeNotifier,
+    OpenClawNotifier,
+    QQBotNotifier,
+    QQOfficialBotNotifier,
+    StdoutNotifier,
+    WebhookNotifier,
+)
 from .providers import ProviderError, build_intraday_provider, build_market_provider, build_news_provider
+from .qq_official_bot import (
+    QQ_CALLBACK_DISPATCH,
+    QQ_CALLBACK_HEARTBEAT,
+    QQ_CALLBACK_VALIDATION,
+    build_dispatch_ack,
+    build_heartbeat_ack,
+    build_validation_response,
+    get_qq_official_bot_client,
+    parse_qq_callback_body,
+    parse_qq_message_event,
+    verify_qq_signature,
+)
 from .rag_store import ResearchNoteStore
 from .stock_knowledge_store import StockKnowledgeStore
 from .schemas import (
@@ -47,6 +69,43 @@ from .services import FinanceAgentService
 
 
 templates = Jinja2Templates(directory="app/templates")
+logger = logging.getLogger(__name__)
+
+
+def _unauthorized_basic_auth_response() -> JSONResponse:
+    return JSONResponse(
+        status_code=401,
+        content={"detail": "authentication required"},
+        headers={"WWW-Authenticate": 'Basic realm="dgq-finance-agent"'},
+    )
+
+
+def _verify_basic_auth(request: Request, settings) -> bool:
+    if not settings.web_basic_auth_enabled:
+        return True
+
+    path = request.url.path or "/"
+    for prefix in get_basic_auth_exempt_paths(settings):
+        if path == prefix or path.startswith(f"{prefix.rstrip('/')}/"):
+            return True
+
+    auth_header = str(request.headers.get("authorization") or "").strip()
+    if not auth_header.lower().startswith("basic "):
+        return False
+
+    encoded = auth_header[6:].strip()
+    try:
+        decoded = base64.b64decode(encoded).decode("utf-8")
+    except Exception:
+        return False
+
+    username, sep, password = decoded.partition(":")
+    if not sep:
+        return False
+    return secrets.compare_digest(username, settings.web_basic_auth_username) and secrets.compare_digest(
+        password,
+        settings.web_basic_auth_password,
+    )
 
 
 def _default_manual_refresh_status() -> dict[str, object]:
@@ -268,6 +327,23 @@ def _build_notifier(settings):
                 access_token=settings.qq_bot_access_token,
             )
         )
+    if (
+        settings.qq_official_bot_enabled
+        and settings.qq_official_bot_app_id
+        and settings.qq_official_bot_app_secret
+        and settings.qq_official_bot_target_id
+    ):
+        notifiers.append(
+            QQOfficialBotNotifier(
+                app_id=settings.qq_official_bot_app_id,
+                app_secret=settings.qq_official_bot_app_secret,
+                target_type=settings.qq_official_bot_target_type,
+                target_id=settings.qq_official_bot_target_id,
+                api_base_url=settings.qq_official_bot_api_base_url,
+                token_url=settings.qq_official_bot_token_url,
+                timeout_seconds=settings.qq_official_bot_timeout_seconds,
+            )
+        )
     return CompositeNotifier(notifiers)
 
 
@@ -363,6 +439,209 @@ def _parse_optional_datetime(value: Optional[str]) -> Optional[datetime]:
         raise HTTPException(status_code=400, detail=f"非法时间格式: {value}，请使用 ISO 格式") from exc
 
 
+def _first_non_empty(*values: object) -> str:
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
+def _normalize_connector_payload(payload: dict | None) -> dict[str, str]:
+    data = payload or {}
+    sender = data.get("sender") if isinstance(data.get("sender"), dict) else {}
+    conversation = data.get("conversation") if isinstance(data.get("conversation"), dict) else {}
+    post_type = _first_non_empty(data.get("post_type"), data.get("notice_type"), data.get("request_type"))
+    message_type = _first_non_empty(data.get("message_type"), data.get("sub_type"))
+
+    channel = _first_non_empty(
+        data.get("channel"),
+        data.get("source_channel"),
+        data.get("platform"),
+        conversation.get("channel"),
+        "qq",
+    ).lower()
+    source = _first_non_empty(data.get("source"), f"openclaw_{channel}")
+    recommender_name = _first_non_empty(
+        data.get("recommender_name"),
+        data.get("sender_name"),
+        data.get("nickname"),
+        data.get("operator"),
+        data.get("from_name"),
+        sender.get("name"),
+        sender.get("nickname"),
+    )
+    sender_id = _first_non_empty(
+        data.get("wechat_id"),
+        data.get("sender_id"),
+        data.get("user_id"),
+        data.get("from_id"),
+        data.get("qq"),
+        sender.get("id"),
+        sender.get("user_id"),
+        sender.get("qq"),
+    )
+    room_topic = _first_non_empty(
+        data.get("room_topic"),
+        data.get("group_name"),
+        data.get("conversation_name"),
+        data.get("chat_name"),
+        conversation.get("name"),
+    )
+    conversation_id = _first_non_empty(
+        data.get("group_id"),
+        data.get("room_id"),
+        data.get("conversation_id"),
+        data.get("chat_id"),
+        conversation.get("id"),
+    )
+    message = _first_non_empty(
+        data.get("message"),
+        data.get("text"),
+        data.get("content"),
+        data.get("body"),
+        data.get("raw_message"),
+    )
+    event_type = _first_non_empty(
+        data.get("event"),
+        data.get("event_type"),
+        post_type,
+        data.get("message_type"),
+        data.get("type"),
+        "message",
+    ).lower()
+
+    if event_type == "message" and message_type:
+        if message_type.lower() == "group":
+            event_type = "group_message"
+        elif message_type.lower() == "private":
+            event_type = "private_message"
+
+    return {
+        "channel": channel,
+        "source": source,
+        "message": message,
+        "recommender_name": recommender_name or sender_id or "未知用户",
+        "sender_id": sender_id,
+        "room_topic": room_topic,
+        "conversation_id": conversation_id,
+        "event_type": event_type,
+    }
+
+
+def _verify_connector_token(request: Request, payload: dict | None, settings) -> None:
+    expected = str(getattr(settings, "connector_shared_token", "") or "").strip()
+    if not expected:
+        return
+
+    data = payload or {}
+    provided = _first_non_empty(
+        request.headers.get("x-connector-token"),
+        request.headers.get("authorization"),
+        data.get("token"),
+        data.get("access_token"),
+    )
+    if provided.lower().startswith("bearer "):
+        provided = provided[7:].strip()
+    if provided != expected:
+        raise HTTPException(status_code=401, detail="非法连接器令牌")
+
+
+def _handle_connector_webhook(
+    request: Request,
+    payload: dict,
+    service: FinanceAgentService,
+    *,
+    verify_connector_token: bool = True,
+) -> dict[str, object]:
+    settings = get_settings()
+    if verify_connector_token:
+        _verify_connector_token(request, payload, settings)
+    normalized = _normalize_connector_payload(payload)
+
+    if normalized["event_type"] not in {"", "message", "text", "group_message", "private_message", "chat_message"}:
+        return {
+            "ok": True,
+            "action": "ignored",
+            "reason": f"unsupported_event:{normalized['event_type']}",
+            "channel": normalized["channel"],
+        }
+
+    message = normalized["message"]
+    if not message:
+        return {
+            "ok": True,
+            "action": "ignored",
+            "reason": "empty_message",
+            "channel": normalized["channel"],
+        }
+
+    if message.startswith("/"):
+        handler = OpenClawCommandHandler(service)
+        operator = f"{normalized['channel']}:{normalized['sender_id'] or normalized['recommender_name']}"
+        reply_message = handler.handle(message, operator=operator)
+        return {
+            "ok": True,
+            "action": "command",
+            "channel": normalized["channel"],
+            "conversation_id": normalized["conversation_id"],
+            "room_topic": normalized["room_topic"],
+            "reply_message": reply_message,
+        }
+
+    parsed_items = service._parse_recommendations(message, normalized["recommender_name"], None)
+
+    records = service.ingest_message(
+        message=message,
+        recommender_name=normalized["recommender_name"],
+        wechat_id=normalized["sender_id"],
+        source=normalized["source"],
+        deduplicate=True,
+    )
+    if records:
+        stock_codes = "、".join(item.stock.stock_code for item in records[:3])
+        suffix = "" if len(records) <= 3 else f" 等{len(records)}条"
+        reply_message = f"已收录 {len(records)} 条推荐：{stock_codes}{suffix}"
+        return {
+            "ok": True,
+            "action": "ingest",
+            "channel": normalized["channel"],
+            "conversation_id": normalized["conversation_id"],
+            "room_topic": normalized["room_topic"],
+            "created": len(records),
+            "recommendation_ids": [item.id for item in records],
+            "reply_message": reply_message,
+        }
+
+    if parsed_items:
+        return {
+            "ok": True,
+            "action": "duplicate",
+            "channel": normalized["channel"],
+            "conversation_id": normalized["conversation_id"],
+            "room_topic": normalized["room_topic"],
+            "created": 0,
+            "reply_message": "这条荐股已存在，已跳过重复入库。",
+        }
+
+    research_result = service.ingest_research_text(
+        text=message,
+        operator_name=normalized["recommender_name"],
+        source=normalized["source"],
+    )
+    return {
+        "ok": True,
+        "action": "research",
+        "channel": normalized["channel"],
+        "conversation_id": normalized["conversation_id"],
+        "room_topic": normalized["room_topic"],
+        "saved": int(research_result.get("saved") or 0),
+        "reply_message": "已收到，未识别到明确荐股，已按研究笔记归档。",
+    }
+
+
 def build_service_for_scheduler(db: Session) -> FinanceAgentService:
     settings = get_settings()
     rag_store = ResearchNoteStore(settings.rag_store_path)
@@ -415,6 +694,13 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="DGQ Finance Agent", debug=settings.debug)
     _ensure_manual_refresh_state(app)
+
+    @app.middleware("http")
+    async def basic_auth_middleware(request: Request, call_next):
+        current_settings = get_settings()
+        if current_settings.web_basic_auth_enabled and not _verify_basic_auth(request, current_settings):
+            return _unauthorized_basic_auth_response()
+        return await call_next(request)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -860,6 +1146,87 @@ def create_app() -> FastAPI:
         wechat_id = payload.get("wechat_id", "")
         records = service.ingest_message(message, recommender_name, wechat_id=wechat_id, source="wechaty")
         return {"created": len(records)}
+
+    @app.post("/api/connectors/openclaw/webhook")
+    @app.post("/api/connectors/qq/webhook")
+    def openclaw_connector_webhook(
+        request: Request,
+        payload: dict,
+        service: FinanceAgentService = Depends(get_service),
+    ):
+        return _handle_connector_webhook(request, payload, service)
+
+    @app.post("/api/connectors/qq/official/webhook")
+    async def qq_official_webhook(request: Request, service: FinanceAgentService = Depends(get_service)):
+        settings = get_settings()
+        if not settings.qq_official_bot_app_id or not settings.qq_official_bot_app_secret:
+            raise HTTPException(status_code=503, detail="QQ 官方 Bot 未配置")
+
+        body = await request.body()
+        if not verify_qq_signature(settings.qq_official_bot_app_secret, request.headers, body):
+            raise HTTPException(status_code=401, detail="QQ 官方回调签名校验失败")
+
+        try:
+            payload = parse_qq_callback_body(body)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="QQ 官方回调负载非法") from exc
+
+        op_code = int(payload.get("op") or 0)
+        data = payload.get("d") if isinstance(payload.get("d"), dict) else {}
+
+        if op_code == QQ_CALLBACK_VALIDATION:
+            plain_token = _first_non_empty(data.get("plain_token"))
+            event_ts = _first_non_empty(data.get("event_ts"))
+            if not plain_token or not event_ts:
+                raise HTTPException(status_code=400, detail="QQ 官方回调验证负载缺失")
+            return JSONResponse(build_validation_response(settings.qq_official_bot_app_secret, plain_token, event_ts))
+
+        if op_code == QQ_CALLBACK_HEARTBEAT:
+            seq = int(payload.get("s") or data.get("seq") or 0)
+            return JSONResponse(build_heartbeat_ack(seq))
+
+        if op_code != QQ_CALLBACK_DISPATCH:
+            return JSONResponse(build_dispatch_ack(True))
+
+        event = parse_qq_message_event(payload)
+        if event is None:
+            return JSONResponse(build_dispatch_ack(True))
+        if event.is_bot:
+            return JSONResponse(build_dispatch_ack(True))
+
+        try:
+            result = _handle_connector_webhook(
+                request,
+                event.to_connector_payload(),
+                service,
+                verify_connector_token=False,
+            )
+            reply_message = str(result.get("reply_message") or "").strip()
+            if reply_message and event.chat_id:
+                client = get_qq_official_bot_client(
+                    settings.qq_official_bot_app_id,
+                    settings.qq_official_bot_app_secret,
+                    settings.qq_official_bot_api_base_url,
+                    settings.qq_official_bot_token_url,
+                    settings.qq_official_bot_timeout_seconds,
+                )
+                client.send_text(
+                    "group" if event.chat_type == "group" else "private",
+                    event.chat_id,
+                    reply_message,
+                    reply_to_message_id=event.message_id,
+                    event_id=event.event_id,
+                )
+            logger.info(
+                "qq official webhook handled: event=%s sender=%s action=%s",
+                event.event_type,
+                event.sender_id,
+                result.get("action"),
+            )
+            return JSONResponse(build_dispatch_ack(True))
+        except Exception:
+            logger.exception("qq official webhook handling failed")
+            return JSONResponse(build_dispatch_ack(False), status_code=502)
 
     @app.get("/", response_class=HTMLResponse)
     def dashboard(request: Request, service: FinanceAgentService = Depends(get_service)):

@@ -1,0 +1,18 @@
+[Unit]
+Description=go-cqhttp Service
+After=network-online.target qq-onebot-relay.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/dgq_finance_agent/runtime/go-cqhttp
+EnvironmentFile=/home/ubuntu/dgq_finance_agent/.env
+ExecStart=/home/ubuntu/dgq_finance_agent/scripts/start_go_cqhttp.sh
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target
