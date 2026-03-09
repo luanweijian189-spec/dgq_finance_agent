@@ -225,23 +225,40 @@ class FinanceAgentService:
                 intraday_day = None
 
             if intraday_day is not None:
-                try:
-                    reference_snapshot = self.market_provider.get_daily_snapshot(
-                        stock.stock_code,
-                        intraday_day - timedelta(days=1),
+                previous_maintenance = self.db.scalar(
+                    select(StockDailyMaintenance)
+                    .where(
+                        StockDailyMaintenance.stock_code == stock.stock_code,
+                        StockDailyMaintenance.market_date < intraday_day,
                     )
-                    intraday_reference_price = float(reference_snapshot.close_price)
-                    intraday_reference_source = "provider_previous_close"
-                except Exception:
-                    intraday_reference_price = None
+                    .order_by(
+                        StockDailyMaintenance.market_date.desc(),
+                        StockDailyMaintenance.updated_at.desc(),
+                    )
+                    .limit(1)
+                )
+                if previous_maintenance is not None and float(previous_maintenance.latest_price or 0.0) > 0:
+                    intraday_reference_price = float(previous_maintenance.latest_price)
+                    intraday_reference_source = "previous_maintenance_close"
 
                 for daily, _recommendation, _recommender in (daily_rows or self._fetch_stock_daily_rows(stock.id)):
                     if intraday_reference_price is not None:
                         break
-                    if daily.date < intraday_day:
+                    if daily.date < intraday_day and float(daily.close_price or 0.0) > 0:
                         intraday_reference_price = float(daily.close_price)
-                        intraday_reference_source = "previous_close"
+                        intraday_reference_source = "previous_daily_close"
                         break
+
+                try:
+                    reference_snapshot = self.market_provider.get_daily_snapshot(
+                        stock.stock_code,
+                        self._previous_trade_day(intraday_day),
+                    )
+                    if intraday_reference_price is None and float(reference_snapshot.close_price or 0.0) > 0:
+                        intraday_reference_price = float(reference_snapshot.close_price)
+                        intraday_reference_source = "provider_previous_close"
+                except Exception:
+                    pass
 
         if intraday_reference_price is None and intraday_bars:
             intraday_reference_price = float(intraday_bars[0].open_price)
@@ -509,11 +526,17 @@ class FinanceAgentService:
             return {"refreshed": False, "reason": "intraday_provider_unavailable"}
 
         data_source = getattr(self.intraday_provider, "__class__", type(self.intraday_provider)).__name__
+        incremental_start = self._resolve_intraday_incremental_start(
+            stock_code=stock_code,
+            period=period,
+            adjust=adjust,
+        )
         try:
             bars, bars_used_cache = self.intraday_provider.get_minute_bars(
                 stock_code=stock_code,
                 period=period,
                 adjust=adjust,
+                start_datetime=incremental_start,
             )
         except Exception as exc:
             return {"refreshed": False, "reason": f"bars_failed: {exc}"}
@@ -566,6 +589,282 @@ class FinanceAgentService:
             }
         return {"refreshed": False, "reason": "no_intraday_data"}
 
+    def get_intraday_snapshot(
+        self,
+        stock_code: str,
+        period: str = "1",
+        adjust: str = "",
+        limit: int = 240,
+        tick_limit: int = 120,
+        bar_since: Optional[str] = None,
+        tick_since: Optional[str] = None,
+        delta_only: bool = False,
+    ) -> dict[str, Any]:
+        stock = self.db.scalar(select(Stock).where(Stock.stock_code == stock_code))
+        all_latest_day_bars = self.list_intraday_bars_from_storage(
+            stock_code=stock_code,
+            period=period,
+            adjust=adjust,
+            limit=None,
+        )
+        all_latest_day_trades = self.list_intraday_ticks_from_storage(stock_code=stock_code, limit=None)
+        bars = self.list_intraday_bars_from_storage(
+            stock_code=stock_code,
+            period=period,
+            adjust=adjust,
+            limit=limit,
+        )
+        trades = self.list_intraday_ticks_from_storage(stock_code=stock_code, limit=tick_limit)
+        maintenance = self.get_latest_stock_daily_maintenance(stock_code)
+
+        reference_price = float((maintenance or {}).get("reference_price") or 0.0)
+        reference_source = str((maintenance or {}).get("reference_source") or "")
+        if stock is not None and all_latest_day_bars:
+            daily_rows = self._fetch_stock_daily_rows(stock.id)
+            resolved_price, resolved_source = self._resolve_intraday_reference_price(stock, all_latest_day_bars, daily_rows)
+            reference_price = float(resolved_price or 0.0)
+            reference_source = resolved_source
+            rebuilt_maintenance = self._build_intraday_maintenance_snapshot(
+                stock=stock,
+                bars=all_latest_day_bars,
+                trades=all_latest_day_trades,
+                reference_price=reference_price,
+                reference_source=reference_source,
+                data_source=str((maintenance or {}).get("data_source") or "storage_snapshot"),
+            )
+            if rebuilt_maintenance is not None:
+                latest_bar_timestamp = str(rebuilt_maintenance.get("latest_bar_timestamp") or "")
+                maintenance_market_date = str((maintenance or {}).get("market_date") or "")
+                rebuilt_market_date = rebuilt_maintenance["market_date"].isoformat()
+                maintenance_reference_price = float((maintenance or {}).get("reference_price") or 0.0)
+                maintenance_reference_source = str((maintenance or {}).get("reference_source") or "")
+                maintenance_latest_bar_timestamp = str((maintenance or {}).get("latest_bar_timestamp") or "")
+                needs_refresh = (
+                    maintenance is None
+                    or maintenance_market_date != rebuilt_market_date
+                    or abs(maintenance_reference_price - reference_price) > 1e-6
+                    or maintenance_reference_source != reference_source
+                    or maintenance_latest_bar_timestamp != latest_bar_timestamp
+                )
+                if needs_refresh:
+                    maintenance = self.upsert_stock_daily_maintenance(rebuilt_maintenance)
+                elif maintenance is None:
+                    maintenance = rebuilt_maintenance
+
+        returned_bars = self._filter_intraday_bars_since(bars, bar_since) if delta_only else bars
+        returned_trades = self._filter_intraday_trades_since(trades, tick_since) if delta_only else trades
+        summary = self.get_intraday_storage_summary(stock_code, period=period, adjust=adjust)
+        summary.update(
+            {
+                "bar_cursor": (bars[-1].timestamp if bars else ""),
+                "tick_cursor": (trades[-1].timestamp if trades else ""),
+                "query_mode": "delta" if delta_only else "full",
+                "returned_bar_count": len(returned_bars),
+                "returned_tick_count": len(returned_trades),
+                "session_slot_count": 240,
+            }
+        )
+
+        return {
+            "stock_code": stock_code,
+            "stock_name": stock.stock_name if stock is not None else "",
+            "bars": [item.__dict__ for item in returned_bars],
+            "trades": [item.__dict__ for item in returned_trades],
+            "reference_price": reference_price,
+            "reference_source": reference_source,
+            "maintenance": maintenance,
+            "intraday_summary": summary,
+        }
+
+    @staticmethod
+    def _parse_intraday_timestamp_text(value: str) -> Optional[datetime]:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                return datetime.strptime(text, fmt)
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def _parse_intraday_tick_timestamp_text(value: str) -> Optional[datetime]:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        for fmt in ("%H:%M:%S", "%H:%M"):
+            try:
+                parsed = datetime.strptime(text, fmt)
+                return parsed
+            except ValueError:
+                continue
+        return None
+
+    def _resolve_intraday_incremental_start(
+        self,
+        stock_code: str,
+        period: str,
+        adjust: str,
+    ) -> Optional[datetime]:
+        latest_bar = self.db.scalar(
+            select(IntradayBarRecord)
+            .where(
+                IntradayBarRecord.stock_code == stock_code,
+                IntradayBarRecord.period == period,
+                IntradayBarRecord.adjust == adjust,
+            )
+            .order_by(IntradayBarRecord.trading_day.desc(), IntradayBarRecord.timestamp.desc())
+            .limit(1)
+        )
+        if latest_bar is None:
+            return None
+        latest_dt = self._parse_intraday_timestamp_text(latest_bar.timestamp)
+        if latest_dt is None:
+            return None
+        latest_trade_day = self._latest_trade_day_for_intraday()
+        if latest_dt.date() != latest_trade_day:
+            return None
+        try:
+            period_minutes = max(int(period or "1"), 1)
+        except ValueError:
+            period_minutes = 1
+        return latest_dt - timedelta(minutes=period_minutes)
+
+    def _filter_intraday_bars_since(self, bars: list[IntradayBar], bar_since: Optional[str]) -> list[IntradayBar]:
+        since_dt = self._parse_intraday_timestamp_text(str(bar_since or ""))
+        if since_dt is None:
+            return bars
+        return [item for item in bars if (self._parse_intraday_timestamp_text(item.timestamp) or datetime.min) > since_dt]
+
+    def _filter_intraday_trades_since(self, trades: list[IntradayTrade], tick_since: Optional[str]) -> list[IntradayTrade]:
+        since_dt = self._parse_intraday_tick_timestamp_text(str(tick_since or ""))
+        if since_dt is None:
+            return trades
+        return [item for item in trades if (self._parse_intraday_tick_timestamp_text(item.timestamp) or datetime.min) > since_dt]
+
+    @staticmethod
+    def _build_intraday_refresh_highlight(
+        before: Optional[dict[str, Any]],
+        after: dict[str, Any],
+        min_change_percent: float,
+    ) -> Optional[str]:
+        stock_code = str(after.get("stock_code") or "")
+        stock_name = str(after.get("stock_name") or stock_code)
+        latest_price = float(after.get("latest_price") or 0.0)
+        change_percent = float(after.get("change_percent") or 0.0)
+        latest_bar_timestamp = str(after.get("latest_bar_timestamp") or "")
+
+        if before is None:
+            return (
+                f"{stock_code} {stock_name} 初始化快照 {latest_price:.2f}"
+                f"（{change_percent:+.2f}%）@{latest_bar_timestamp or 'latest'}"
+            )
+
+        previous_price = float(before.get("latest_price") or 0.0)
+        previous_change_percent = float(before.get("change_percent") or 0.0)
+        delta_price = latest_price - previous_price
+        delta_change_percent = change_percent - previous_change_percent
+        threshold_price = max(abs(previous_price) * float(min_change_percent) / 100.0, 0.01)
+
+        if abs(delta_change_percent) < float(min_change_percent) and abs(delta_price) < threshold_price:
+            return None
+
+        direction_text = "拉升" if delta_change_percent >= 0 else "回落"
+        return (
+            f"{stock_code} {stock_name} {latest_price:.2f}（{change_percent:+.2f}%），"
+            f"较上轮{direction_text} {delta_change_percent:+.2f}pct / {delta_price:+.2f} 元"
+        )
+
+    def run_intraday_refresh_cycle(
+        self,
+        limit: int = 12,
+        period: str = "1",
+        adjust: str = "",
+        include_ticks: bool = True,
+        min_change_percent: float = 0.8,
+        force_notify: bool = False,
+    ) -> dict[str, Any]:
+        candidates = self.list_intraday_sync_candidates(limit=limit)
+        items: list[dict[str, Any]] = []
+        highlights: list[str] = []
+        success_count = 0
+
+        for candidate in candidates:
+            stock_code = str(candidate.get("stock_code") or "")
+            stock_name = str(candidate.get("stock_name") or "")
+            before = self.get_latest_stock_daily_maintenance(stock_code)
+            try:
+                result = self.refresh_stock_realtime_context(
+                    stock_code=stock_code,
+                    period=period,
+                    adjust=adjust,
+                    include_ticks=include_ticks,
+                )
+            except Exception as exc:
+                items.append(
+                    {
+                        "stock_code": stock_code,
+                        "stock_name": stock_name,
+                        "ok": False,
+                        "message": str(exc),
+                    }
+                )
+                continue
+
+            maintenance = result.get("maintenance") if isinstance(result, dict) else None
+            if result.get("refreshed") and maintenance:
+                success_count += 1
+                highlight = self._build_intraday_refresh_highlight(before, maintenance, min_change_percent)
+                if highlight:
+                    highlights.append(highlight)
+                items.append(
+                    {
+                        "stock_code": stock_code,
+                        "stock_name": stock_name or maintenance.get("stock_name") or "",
+                        "ok": True,
+                        "latest_price": float(maintenance.get("latest_price") or 0.0),
+                        "change_percent": float(maintenance.get("change_percent") or 0.0),
+                        "latest_bar_timestamp": str(maintenance.get("latest_bar_timestamp") or ""),
+                    }
+                )
+                continue
+
+            items.append(
+                {
+                    "stock_code": stock_code,
+                    "stock_name": stock_name,
+                    "ok": False,
+                    "message": str(result.get("reason") or "unknown"),
+                }
+            )
+
+        should_notify = bool(highlights) or bool(force_notify)
+        if should_notify and candidates:
+            content = (
+                f"本轮刷新 {len(candidates)} 只，成功 {success_count} 只，"
+                f"显著变化 {len(highlights)} 只。"
+            )
+            if highlights:
+                content = f"{content}{'；'.join(highlights[:6])}"
+                if len(highlights) > 6:
+                    content = f"{content}；其余 {len(highlights) - 6} 只请到页面查看"
+            else:
+                content = f"{content}本轮未发现超过阈值的显著变化。"
+            self.notifier.send(
+                title=f"盘中刷新 {datetime.now().strftime('%H:%M')}",
+                content=content,
+            )
+
+        return {
+            "total": len(candidates),
+            "success_count": success_count,
+            "failed_count": len(candidates) - success_count,
+            "highlight_count": len(highlights),
+            "items": items,
+            "highlights": highlights,
+        }
+
     @staticmethod
     def _next_trade_day(day: date) -> date:
         next_day = day
@@ -573,6 +872,14 @@ class FinanceAgentService:
             next_day = date.fromordinal(next_day.toordinal() + 1)
             if next_day.weekday() < 5:
                 return next_day
+
+    @staticmethod
+    def _previous_trade_day(day: date) -> date:
+        previous_day = day
+        while True:
+            previous_day = date.fromordinal(previous_day.toordinal() - 1)
+            if previous_day.weekday() < 5:
+                return previous_day
 
     @staticmethod
     def _evaluate_direction_result(direction: str, pnl_percent: float) -> tuple[str, str]:
@@ -2633,18 +2940,36 @@ class FinanceAgentService:
         stock_code: str,
         period: str = "1",
         adjust: str = "",
-        limit: int = 240,
+        limit: Optional[int] = 240,
     ) -> list[IntradayBar]:
         self._ensure_intraday_tables()
-        rows = self.db.scalars(
-            select(IntradayBarRecord)
+        latest_trading_day = self.db.scalar(
+            select(IntradayBarRecord.trading_day)
             .where(
                 IntradayBarRecord.stock_code == stock_code,
                 IntradayBarRecord.period == period,
                 IntradayBarRecord.adjust == adjust,
             )
+            .order_by(IntradayBarRecord.trading_day.desc())
+            .limit(1)
+        )
+        if latest_trading_day is None:
+            return []
+
+        stmt = (
+            select(IntradayBarRecord)
+            .where(
+                IntradayBarRecord.stock_code == stock_code,
+                IntradayBarRecord.period == period,
+                IntradayBarRecord.adjust == adjust,
+                IntradayBarRecord.trading_day == latest_trading_day,
+            )
             .order_by(IntradayBarRecord.timestamp.desc())
-            .limit(max(limit, 1))
+        )
+        if limit is not None:
+            stmt = stmt.limit(max(limit, 1))
+        rows = self.db.scalars(
+            stmt
         ).all()
         rows = list(reversed(rows))
         return [
@@ -2667,7 +2992,7 @@ class FinanceAgentService:
     def list_intraday_ticks_from_storage(
         self,
         stock_code: str,
-        limit: int = 120,
+        limit: Optional[int] = 120,
     ) -> list[IntradayTrade]:
         self._ensure_intraday_tables()
         latest_day = self.db.scalar(
@@ -2679,15 +3004,18 @@ class FinanceAgentService:
         if latest_day is None:
             return []
 
-        rows = self.db.scalars(
+        stmt = (
             select(IntradayTradeTick)
             .where(
                 IntradayTradeTick.stock_code == stock_code,
                 IntradayTradeTick.trading_day == latest_day,
             )
             .order_by(IntradayTradeTick.row_index.asc())
-            .limit(max(limit, 1))
-        ).all()
+        )
+        if limit is not None:
+            stmt = stmt.limit(max(limit, 1))
+
+        rows = self.db.scalars(stmt).all()
         return [
             IntradayTrade(
                 timestamp=row.timestamp,
@@ -2700,12 +3028,23 @@ class FinanceAgentService:
 
     def get_intraday_storage_summary(self, stock_code: str, period: str = "1", adjust: str = "") -> dict[str, Any]:
         self._ensure_intraday_tables()
+        latest_trading_day = self.db.scalar(
+            select(IntradayBarRecord.trading_day)
+            .where(
+                IntradayBarRecord.stock_code == stock_code,
+                IntradayBarRecord.period == period,
+                IntradayBarRecord.adjust == adjust,
+            )
+            .order_by(IntradayBarRecord.trading_day.desc())
+            .limit(1)
+        )
         latest_bar = self.db.scalar(
             select(IntradayBarRecord)
             .where(
                 IntradayBarRecord.stock_code == stock_code,
                 IntradayBarRecord.period == period,
                 IntradayBarRecord.adjust == adjust,
+                IntradayBarRecord.trading_day == latest_trading_day,
             )
             .order_by(IntradayBarRecord.timestamp.desc())
             .limit(1)
@@ -2721,10 +3060,14 @@ class FinanceAgentService:
                 IntradayBarRecord.stock_code == stock_code,
                 IntradayBarRecord.period == period,
                 IntradayBarRecord.adjust == adjust,
+                IntradayBarRecord.trading_day == latest_trading_day,
             )
         )
         tick_count = self.db.scalar(
-            select(func.count()).select_from(IntradayTradeTick).where(IntradayTradeTick.stock_code == stock_code)
+            select(func.count()).select_from(IntradayTradeTick).where(
+                IntradayTradeTick.stock_code == stock_code,
+                IntradayTradeTick.trading_day == (latest_bar.trading_day if latest_bar is not None else None),
+            )
         )
         return {
             "bar_count": int(bar_count or 0),
@@ -2846,12 +3189,39 @@ class FinanceAgentService:
 
         intraday_bars = self.list_intraday_bars_from_storage(stock.stock_code, limit=240)
         intraday_ticks = self.list_intraday_ticks_from_storage(stock.stock_code, limit=120)
+        intraday_ticks_full = self.list_intraday_ticks_from_storage(stock.stock_code, limit=None)
         intraday_reference_price, intraday_reference_source = self._resolve_intraday_reference_price(
             stock,
             intraday_bars,
             daily_rows,
         )
         latest_intraday_maintenance = self.get_latest_stock_daily_maintenance(stock.stock_code)
+        if intraday_bars:
+            rebuilt_maintenance = self._build_intraday_maintenance_snapshot(
+                stock=stock,
+                bars=intraday_bars,
+                trades=intraday_ticks_full,
+                reference_price=intraday_reference_price,
+                reference_source=intraday_reference_source,
+                data_source=str((latest_intraday_maintenance or {}).get("data_source") or "storage_snapshot"),
+            )
+            if rebuilt_maintenance is not None:
+                rebuilt_market_date = rebuilt_maintenance["market_date"].isoformat()
+                latest_intraday_maintenance_market_date = str((latest_intraday_maintenance or {}).get("market_date") or "")
+                latest_intraday_maintenance_reference_price = float((latest_intraday_maintenance or {}).get("reference_price") or 0.0)
+                latest_intraday_maintenance_reference_source = str((latest_intraday_maintenance or {}).get("reference_source") or "")
+                latest_intraday_maintenance_latest_bar_timestamp = str((latest_intraday_maintenance or {}).get("latest_bar_timestamp") or "")
+                rebuilt_latest_bar_timestamp = str(rebuilt_maintenance.get("latest_bar_timestamp") or "")
+                if (
+                    latest_intraday_maintenance is None
+                    or latest_intraday_maintenance_market_date != rebuilt_market_date
+                    or abs(latest_intraday_maintenance_reference_price - float(intraday_reference_price or 0.0)) > 1e-6
+                    or latest_intraday_maintenance_reference_source != intraday_reference_source
+                    or latest_intraday_maintenance_latest_bar_timestamp != rebuilt_latest_bar_timestamp
+                ):
+                    latest_intraday_maintenance = self.upsert_stock_daily_maintenance(rebuilt_maintenance)
+                else:
+                    latest_intraday_maintenance = latest_intraday_maintenance or rebuilt_maintenance
         latest_intraday_maintenance = self.build_intraday_agent_analysis(
             stock=stock,
             latest_recommendation=latest_recommendation,

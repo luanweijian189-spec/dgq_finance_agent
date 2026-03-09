@@ -367,44 +367,44 @@
                             <div class="item-title">天级别股票信息维护</div>
                             {% if maintenance %}
                             <div class="item-meta" style="margin-bottom: 8px;">
-                                <span>交易日 {{ maintenance.get('market_date', '-') }}</span>
-                                <span>刷新时间 {{ maintenance.get('updated_at', '-') or '-' }}</span>
-                                <span>数据源 {{ maintenance.get('data_source', '-') or '-' }}</span>
-                                <span>基准 {{ maintenance.get('reference_source', '-') or '-' }}</span>
+                                <span id="maintenance-market-date">交易日 {{ maintenance.get('market_date', '-') }}</span>
+                                <span id="maintenance-updated-at">刷新时间 {{ maintenance.get('updated_at', '-') or '-' }}</span>
+                                <span id="maintenance-data-source">数据源 {{ maintenance.get('data_source', '-') or '-' }}</span>
+                                <span id="maintenance-reference-source">基准 {{ maintenance.get('reference_source', '-') or '-' }}</span>
                             </div>
                             <div class="metric-grid" style="margin-bottom: 10px;">
                                 <div class="metric-box">
                                     <div class="metric-label">最新价 / 涨跌幅</div>
-                                    <div class="metric-value {% if maintenance.get('change_percent', 0) > 0 %}neg{% elif maintenance.get('change_percent', 0) < 0 %}pos{% endif %}">
+                                    <div id="maintenance-latest-change" class="metric-value {% if maintenance.get('change_percent', 0) > 0 %}neg{% elif maintenance.get('change_percent', 0) < 0 %}pos{% endif %}">
                                         {{ '%.2f'|format(maintenance.get('latest_price', 0) or 0) }} / {{ '%+.2f'|format(maintenance.get('change_percent', 0) or 0) }}%
                                     </div>
                                 </div>
                                 <div class="metric-box">
                                     <div class="metric-label">均价 / 昨收</div>
-                                    <div class="metric-value">{{ '%.2f'|format(maintenance.get('average_price', 0) or 0) }} / {{ '%.2f'|format(maintenance.get('reference_price', 0) or 0) }}</div>
+                                    <div id="maintenance-average-reference" class="metric-value">{{ '%.2f'|format(maintenance.get('average_price', 0) or 0) }} / {{ '%.2f'|format(maintenance.get('reference_price', 0) or 0) }}</div>
                                 </div>
                                 <div class="metric-box">
                                     <div class="metric-label">高 / 低</div>
-                                    <div class="metric-value">{{ '%.2f'|format(maintenance.get('high_price', 0) or 0) }} / {{ '%.2f'|format(maintenance.get('low_price', 0) or 0) }}</div>
+                                    <div id="maintenance-high-low" class="metric-value">{{ '%.2f'|format(maintenance.get('high_price', 0) or 0) }} / {{ '%.2f'|format(maintenance.get('low_price', 0) or 0) }}</div>
                                 </div>
                                 <div class="metric-box">
                                     <div class="metric-label">分钟线 / 逐笔</div>
-                                    <div class="metric-value">{{ maintenance.get('bar_count', 0) or 0 }} / {{ maintenance.get('tick_count', 0) or 0 }}</div>
+                                    <div id="maintenance-bars-ticks" class="metric-value">{{ maintenance.get('bar_count', 0) or 0 }} / {{ maintenance.get('tick_count', 0) or 0 }}</div>
                                 </div>
                             </div>
-                            <pre>{{ maintenance.get('summary_text', '暂无维护摘要') }}</pre>
+                            <pre id="maintenance-summary">{{ maintenance.get('summary_text', '暂无维护摘要') }}</pre>
                             <div class="item" style="margin-top: 10px;">
                                 <div class="item-title">进入页面自动触发的 Agent 盘中解读</div>
                                 <div class="item-meta">
                                     <span>触发方式 打开个股页</span>
-                                    <span>时间 {{ maintenance.get('agent_intraday_analysis_ts', '-') or '-' }}</span>
+                                    <span id="maintenance-agent-ts">时间 {{ maintenance.get('agent_intraday_analysis_ts', '-') or '-' }}</span>
                                 </div>
-                                <pre>{{ maintenance.get('agent_intraday_analysis', '暂无盘中解读') or '暂无盘中解读' }}</pre>
+                                <pre id="maintenance-agent-analysis">{{ maintenance.get('agent_intraday_analysis', '暂无盘中解读') or '暂无盘中解读' }}</pre>
                             </div>
                             {% else %}
                             <div class="empty">暂无天级别维护快照</div>
                             {% endif %}
-                            <div class="status-line" style="margin-top: 10px;">
+                            <div id="intraday-refresh-state" class="status-line" style="margin-top: 10px;">
                                 查询即拉取实时盘中数据：
                                 {% if intraday_refresh.get('refreshed') %}
                                 已刷新完成
@@ -639,18 +639,27 @@
 <script id="intraday-bars-data" type="application/json">{{ (detail.get('intraday_bars') or [])|tojson }}</script>
 <script id="intraday-ticks-data" type="application/json">{{ (detail.get('intraday_ticks') or [])|tojson }}</script>
 <script id="intraday-reference-data" type="application/json">{{ detail.get('intraday_reference_price')|tojson }}</script>
+<script id="intraday-maintenance-data" type="application/json">{{ (detail.get('stock_daily_maintenance') or {})|tojson }}</script>
+<script id="intraday-refresh-data" type="application/json">{{ (detail.get('intraday_refresh') or {})|tojson }}</script>
 <script>
     const stockCode = "{{ detail.stock_code }}";
     const preloadedBars = JSON.parse(document.getElementById('intraday-bars-data')?.textContent || '[]');
     const preloadedTicks = JSON.parse(document.getElementById('intraday-ticks-data')?.textContent || '[]');
     const preloadedReferencePrice = JSON.parse(document.getElementById('intraday-reference-data')?.textContent || 'null');
+    const preloadedMaintenance = JSON.parse(document.getElementById('intraday-maintenance-data')?.textContent || '{}');
+    const preloadedRefresh = JSON.parse(document.getElementById('intraday-refresh-data')?.textContent || '{}');
     const canvas = document.getElementById('intraday-canvas');
     const ctx = canvas.getContext('2d');
     const statusEl = document.getElementById('intraday-status');
+    const SESSION_TIME_SLOTS = buildSessionTimeline();
     let autoRefreshTimer = null;
+    let syncInFlight = false;
     let latestBars = [];
     let latestTrades = [];
+    let latestMaintenance = preloadedMaintenance;
     let latestReferencePrice = Number(preloadedReferencePrice || 0);
+    let latestBarCursor = '';
+    let latestTickCursor = '';
 
     function formatNumber(value, digits = 0) {
         const num = Number(value || 0);
@@ -695,6 +704,101 @@
 
     function setStatus(text) {
         statusEl.textContent = text;
+    }
+
+    function setText(id, text) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    }
+
+    function buildSessionTimeline() {
+        const slots = [];
+        const pushRange = (startHour, startMinute, endHour, endMinute) => {
+            const cursor = new Date();
+            cursor.setHours(startHour, startMinute, 0, 0);
+            const end = new Date(cursor);
+            end.setHours(endHour, endMinute, 0, 0);
+            while (cursor <= end) {
+                slots.push(`${String(cursor.getHours()).padStart(2, '0')}:${String(cursor.getMinutes()).padStart(2, '0')}`);
+                cursor.setMinutes(cursor.getMinutes() + 1);
+            }
+        };
+        pushRange(9, 31, 11, 30);
+        pushRange(13, 1, 15, 0);
+        return slots;
+    }
+
+    function extractTimeLabel(timestamp) {
+        const text = String(timestamp || '');
+        if (text.length >= 16) return text.slice(11, 16);
+        if (text.length >= 5) return text.slice(0, 5);
+        return text;
+    }
+
+    function normalizeBarMap(bars) {
+        const map = new Map();
+        (bars || []).forEach(item => {
+            const key = extractTimeLabel(item.timestamp);
+            if (key) map.set(key, item);
+        });
+        return map;
+    }
+
+    function mergeIncrementalBars(existingBars, incomingBars) {
+        const merged = new Map();
+        [...(existingBars || []), ...(incomingBars || [])].forEach(item => {
+            const key = String(item.timestamp || '');
+            if (key) merged.set(key, item);
+        });
+        return Array.from(merged.values()).sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
+    }
+
+    function mergeIncrementalTrades(existingTrades, incomingTrades) {
+        const merged = new Map();
+        [...(existingTrades || []), ...(incomingTrades || [])].forEach((item, index) => {
+            const key = `${item.timestamp || ''}-${item.price || ''}-${item.volume_lot || ''}-${item.side || ''}-${index}`;
+            merged.set(key, item);
+        });
+        return Array.from(merged.values()).sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
+    }
+
+    function buildChartSlots(bars) {
+        const barMap = normalizeBarMap(bars);
+        return SESSION_TIME_SLOTS.map(label => ({
+            label,
+            bar: barMap.get(label) || null,
+        }));
+    }
+
+    function renderMaintenance(maintenance, refreshInfo = {}) {
+        if (!maintenance || !Object.keys(maintenance).length) return;
+        latestMaintenance = maintenance;
+        latestReferencePrice = Number(maintenance.reference_price || latestReferencePrice || 0);
+        const changePct = Number(maintenance.change_percent || 0);
+        const latestChangeEl = document.getElementById('maintenance-latest-change');
+        if (latestChangeEl) {
+            latestChangeEl.textContent = `${formatNumber(maintenance.latest_price, 2)} / ${formatSigned(changePct, 2, '%')}`;
+            latestChangeEl.className = `metric-value ${getPriceClass(changePct)}`.trim();
+        }
+        setText('maintenance-market-date', `交易日 ${maintenance.market_date || '-'}`);
+        setText('maintenance-updated-at', `刷新时间 ${maintenance.updated_at || '-'}`);
+        setText('maintenance-data-source', `数据源 ${maintenance.data_source || '-'}`);
+        setText('maintenance-reference-source', `基准 ${maintenance.reference_source || '-'}`);
+        setText('maintenance-average-reference', `${formatNumber(maintenance.average_price, 2)} / ${formatNumber(maintenance.reference_price, 2)}`);
+        setText('maintenance-high-low', `${formatNumber(maintenance.high_price, 2)} / ${formatNumber(maintenance.low_price, 2)}`);
+        setText('maintenance-bars-ticks', `${formatNumber(maintenance.bar_count, 0)} / ${formatNumber(maintenance.tick_count, 0)}`);
+        setText('maintenance-summary', maintenance.summary_text || '暂无维护摘要');
+        setText('maintenance-agent-ts', `时间 ${maintenance.agent_intraday_analysis_ts || '-'}`);
+        setText('maintenance-agent-analysis', maintenance.agent_intraday_analysis || '暂无盘中解读');
+
+        const refreshLine = document.getElementById('intraday-refresh-state');
+        if (refreshLine) {
+            if (refreshInfo && refreshInfo.refreshed) {
+                refreshLine.textContent = `页面自动抓取已完成：${maintenance.latest_bar_timestamp || maintenance.updated_at || 'latest'} ｜ 基准 ${maintenance.reference_source || '-'} ｜ 昨收 ${formatNumber(maintenance.reference_price, 2)}`;
+            } else if (refreshInfo && refreshInfo.reason) {
+                refreshLine.textContent = `自动抓取状态：${refreshInfo.reason}`;
+            }
+        }
     }
 
     function inferVolumeMultiplier(bars) {
@@ -748,12 +852,14 @@
             return;
         }
 
-        const prices = bars.map(item => Number(item.close_price || 0));
+        const chartSlots = buildChartSlots(bars);
+        const visibleBars = chartSlots.filter(item => item.bar).map(item => item.bar);
+        const prices = visibleBars.map(item => Number(item.close_price || 0));
         const volumeMultiplier = inferVolumeMultiplier(bars);
         const avgPrices = [];
         let cumAmount = 0;
         let cumVolumeShares = 0;
-        bars.forEach(item => {
+        visibleBars.forEach(item => {
             cumAmount += Number(item.amount || 0);
             cumVolumeShares += volumeLotToShares(item.volume, volumeMultiplier);
             avgPrices.push(cumVolumeShares > 0 ? cumAmount / cumVolumeShares : Number(item.close_price || 0));
@@ -767,7 +873,7 @@
         const minPrice = referencePrice > 0 ? referencePrice - maxDeviation : Math.min(...allPrices);
         const maxPrice = referencePrice > 0 ? referencePrice + maxDeviation : Math.max(...allPrices);
         const priceRange = Math.max(maxPrice - minPrice, 0.01);
-        const maxVolume = Math.max(...bars.map(item => Number(item.volume || 0)), 1);
+        const maxVolume = Math.max(...visibleBars.map(item => Number(item.volume || 0)), 1);
         const left = 48;
         const right = width - 56;
         const top = 18;
@@ -777,7 +883,7 @@
         const chartWidth = right - left;
         const priceHeight = priceBottom - top;
         const volumeHeight = bottom - volumeTop;
-        const step = chartWidth / Math.max(bars.length - 1, 1);
+        const step = chartWidth / Math.max(chartSlots.length - 1, 1);
 
         ctx.strokeStyle = 'rgba(255,255,255,.08)';
         ctx.lineWidth = 1;
@@ -809,12 +915,14 @@
             }
         }
 
-        const timeMarks = [0, Math.floor(bars.length * 0.25), Math.floor(bars.length * 0.5), Math.floor(bars.length * 0.75), bars.length - 1]
+        const timeMarkLabels = ['09:30', '10:30', '11:30', '14:00', '15:00'];
+        const timeMarks = timeMarkLabels
+            .map(label => SESSION_TIME_SLOTS.findIndex(item => item === label || item === label.replace('09:30', '09:31')))
             .filter((value, index, arr) => arr.indexOf(value) === index);
         timeMarks.forEach(index => {
             const x = left + index * step;
             ctx.fillStyle = '#8892a4';
-            ctx.fillText((bars[index]?.timestamp || '').slice(11, 16), x - 18, height - 8);
+            ctx.fillText(chartSlots[index]?.label || '-', x - 18, height - 8);
         });
 
         const priceToY = (price) => top + ((maxPrice - price) / priceRange) * priceHeight;
@@ -832,38 +940,57 @@
         }
 
         ctx.beginPath();
-        bars.forEach((item, index) => {
+        let firstPricePoint = true;
+        chartSlots.forEach((item, index) => {
+            if (!item.bar) return;
             const x = left + index * step;
-            const y = priceToY(Number(item.close_price || 0));
-            if (index === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+            const y = priceToY(Number(item.bar.close_price || 0));
+            if (firstPricePoint) {
+                ctx.moveTo(x, y);
+                firstPricePoint = false;
+            } else {
+                ctx.lineTo(x, y);
+            }
         });
         ctx.strokeStyle = '#f59e0b';
         ctx.lineWidth = 2;
         ctx.stroke();
 
         ctx.beginPath();
-        avgPrices.forEach((price, index) => {
+        let avgIndex = 0;
+        let firstAvgPoint = true;
+        chartSlots.forEach((item, index) => {
+            if (!item.bar) return;
+            const price = avgPrices[avgIndex++];
             const x = left + index * step;
             const y = priceToY(price);
-            if (index === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+            if (firstAvgPoint) {
+                ctx.moveTo(x, y);
+                firstAvgPoint = false;
+            } else {
+                ctx.lineTo(x, y);
+            }
         });
         ctx.strokeStyle = '#4f8ef7';
         ctx.lineWidth = 1.6;
         ctx.stroke();
 
-        bars.forEach((item, index) => {
+        let previousBar = null;
+        chartSlots.forEach((slot, index) => {
+            const item = slot.bar;
+            if (!item) return;
             const x = left + index * step;
-            const prevClose = index > 0 ? Number(bars[index - 1].close_price || 0) : Number(item.open_price || item.close_price || 0);
+            const prevClose = previousBar ? Number(previousBar.close_price || 0) : Number(item.open_price || item.close_price || 0);
             const isUp = Number(item.close_price || 0) >= prevClose;
             const barHeight = Math.max((Number(item.volume || 0) / maxVolume) * volumeHeight, 1);
             ctx.fillStyle = isUp ? 'rgba(239,68,68,.82)' : 'rgba(34,197,94,.82)';
             ctx.fillRect(x - Math.max(step * 0.25, 1), bottom - barHeight, Math.max(step * 0.5, 2), barHeight);
+            previousBar = item;
         });
 
-        const latest = bars[bars.length - 1];
+        const latest = visibleBars[visibleBars.length - 1];
         if (latest) {
+            const latestIndex = chartSlots.map(item => item.bar ? item.bar.timestamp : '').lastIndexOf(latest.timestamp);
             const y = priceToY(Number(latest.close_price || 0));
             ctx.setLineDash([4, 4]);
             ctx.strokeStyle = 'rgba(245,158,11,.7)';
@@ -872,6 +999,14 @@
             ctx.lineTo(right, y);
             ctx.stroke();
             ctx.setLineDash([]);
+
+            if (latestIndex >= 0) {
+                const latestX = left + latestIndex * step;
+                ctx.fillStyle = '#f59e0b';
+                ctx.beginPath();
+                ctx.arc(latestX, y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
     }
 
@@ -965,19 +1100,41 @@
         return payload;
     }
 
-    async function loadStored() {
+    async function fetchIntradaySnapshot({ refresh = false } = {}) {
         const period = document.getElementById('intraday-period').value;
+        const params = new URLSearchParams({
+            period,
+            adjust: '',
+            limit: '240',
+            tick_limit: '120',
+            include_ticks: 'true',
+            refresh: refresh ? 'true' : 'false',
+        });
+        if (refresh && latestBarCursor) {
+            params.set('bar_since', latestBarCursor);
+            params.set('tick_since', latestTickCursor);
+            params.set('delta_only', 'true');
+        }
+        return fetchJson(`/api/stocks/${stockCode}/intraday_snapshot?${params.toString()}`);
+    }
+
+    function updateCursors(summary = {}) {
+        latestBarCursor = String(summary.bar_cursor || latestBarCursor || '');
+        latestTickCursor = String(summary.tick_cursor || latestTickCursor || '');
+    }
+
+    async function loadStored() {
         setStatus('正在读取已落库分时数据...');
         try {
-            const [barsPayload, ticksPayload] = await Promise.all([
-                fetchJson(`/api/intraday/${stockCode}?use_storage=true&period=${encodeURIComponent(period)}&limit=240`),
-                fetchJson(`/api/intraday/${stockCode}/ticks?use_storage=true&limit=120`),
-            ]);
-            latestBars = barsPayload.bars || [];
-            latestTrades = ticksPayload.trades || [];
+            const snapshot = await fetchIntradaySnapshot({ refresh: false });
+            latestBars = snapshot.bars || [];
+            latestTrades = snapshot.trades || [];
+            latestReferencePrice = Number(snapshot.reference_price || 0);
+            updateCursors(snapshot.intraday_summary || {});
             drawBars(latestBars);
             updateMeta(latestBars);
             renderTicks(latestTrades);
+            renderMaintenance(snapshot.maintenance || latestMaintenance, snapshot.refresh || {});
             setStatus(`已加载：K线 ${latestBars.length} 条，逐笔 ${latestTrades.length} 条`);
         } catch (error) {
             setStatus(`读取失败：${error.message || error}`);
@@ -985,6 +1142,11 @@
     }
 
     async function syncAndLoad() {
+        if (syncInFlight) {
+            setStatus('已有盘中同步任务正在执行，请稍候...');
+            return;
+        }
+        syncInFlight = true;
         const period = document.getElementById('intraday-period').value;
         const startValue = document.getElementById('intraday-start').value;
         const endValue = document.getElementById('intraday-end').value;
@@ -1005,6 +1167,41 @@
             } else {
                 await loadStored();
             }
+        } finally {
+            syncInFlight = false;
+        }
+    }
+
+    async function autoSyncAndRender() {
+        if (syncInFlight || document.hidden) {
+            return;
+        }
+        syncInFlight = true;
+        setStatus('正在自动抓取最新盘中数据...');
+        try {
+            const snapshot = await fetchIntradaySnapshot({ refresh: true });
+            const incomingBars = snapshot.bars || [];
+            const incomingTrades = snapshot.trades || [];
+            latestBars = (snapshot.intraday_summary || {}).query_mode === 'delta'
+                ? mergeIncrementalBars(latestBars, incomingBars)
+                : incomingBars;
+            latestTrades = (snapshot.intraday_summary || {}).query_mode === 'delta'
+                ? mergeIncrementalTrades(latestTrades, incomingTrades)
+                : incomingTrades;
+            latestReferencePrice = Number(snapshot.reference_price || 0);
+            updateCursors(snapshot.intraday_summary || {});
+            drawBars(latestBars);
+            updateMeta(latestBars);
+            renderTicks(latestTrades);
+            renderMaintenance(snapshot.maintenance || latestMaintenance, snapshot.refresh || {});
+            const latestTime = (snapshot.intraday_summary || {}).latest_bar_timestamp || '-';
+            const returnedBarCount = (snapshot.intraday_summary || {}).returned_bar_count ?? latestBars.length;
+            const returnedTickCount = (snapshot.intraday_summary || {}).returned_tick_count ?? latestTrades.length;
+            setStatus(`自动抓取完成：新增K线 ${returnedBarCount} 条，新增逐笔 ${returnedTickCount} 条，最新 ${latestTime}`);
+        } catch (error) {
+            setStatus(`自动抓取失败：${error.message || error}`);
+        } finally {
+            syncInFlight = false;
         }
     }
 
@@ -1017,7 +1214,7 @@
         const interval = Number(document.getElementById('auto-refresh-interval').value || 15000);
         if (!enabled) return;
         autoRefreshTimer = setInterval(() => {
-            loadStored();
+            autoSyncAndRender();
         }, interval);
     }
 
@@ -1030,6 +1227,9 @@
     initDefaultRange();
     latestBars = preloadedBars;
     latestTrades = preloadedTicks;
+    latestBarCursor = latestBars.length ? String(latestBars[latestBars.length - 1].timestamp || '') : '';
+    latestTickCursor = latestTrades.length ? String(latestTrades[latestTrades.length - 1].timestamp || '') : '';
+    renderMaintenance(preloadedMaintenance, preloadedRefresh);
     if (latestBars.length || latestTrades.length) {
         drawBars(latestBars);
         updateMeta(latestBars);
@@ -1037,9 +1237,7 @@
         setStatus(`已直接渲染：K线 ${latestBars.length} 条，逐笔 ${latestTrades.length} 条`);
     }
     setupAutoRefresh();
-    if (!latestBars.length && !latestTrades.length) {
-        loadStored();
-    }
+    autoSyncAndRender();
 </script>
 </body>
 </html>

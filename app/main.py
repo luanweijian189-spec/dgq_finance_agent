@@ -18,7 +18,7 @@ from .decision_engine import LLMDecisionEngine
 from .input_parser_agent import LLMInputParserAgent
 from .llm_usage_store import LLMUsageStore
 from .memory import MemoryRetriever
-from .notifier import StdoutNotifier, WebhookNotifier
+from .notifier import CompositeNotifier, OpenClawNotifier, QQBotNotifier, StdoutNotifier, WebhookNotifier
 from .providers import ProviderError, build_intraday_provider, build_market_provider, build_news_provider
 from .rag_store import ResearchNoteStore
 from .stock_knowledge_store import StockKnowledgeStore
@@ -42,11 +42,27 @@ from .schemas import (
     NewsScanResponse,
     ResearchTextRequest,
 )
-from .scheduler import add_news_scan_job, create_scheduler
+from .scheduler import add_intraday_refresh_job, add_news_scan_job, create_scheduler
 from .services import FinanceAgentService
 
 
 templates = Jinja2Templates(directory="app/templates")
+
+
+def _default_manual_refresh_status() -> dict[str, object]:
+    return {
+        "state": "idle",
+        "message": "尚未执行手动刷新",
+        "started_at": "",
+        "finished_at": "",
+        "trading_date": "",
+        "duration_seconds": 0.0,
+        "progress_percent": 0,
+        "stage": "idle",
+        "stage_label": "未开始",
+        "last_updated_at": "",
+        "run_id": "",
+    }
 
 
 def _latest_trading_date(base_day: date) -> date:
@@ -60,20 +76,44 @@ def _ensure_manual_refresh_state(app: FastAPI) -> dict:
     if not hasattr(app.state, "manual_refresh_lock"):
         app.state.manual_refresh_lock = Lock()
     if not hasattr(app.state, "manual_refresh_status"):
-        app.state.manual_refresh_status = {
-            "state": "idle",
-            "message": "尚未执行手动刷新",
-            "started_at": "",
-            "finished_at": "",
-            "trading_date": "",
-            "duration_seconds": 0.0,
-        }
+        app.state.manual_refresh_status = _default_manual_refresh_status()
     return app.state.manual_refresh_status
 
 
-def _run_manual_refresh(service: FinanceAgentService, settings, trading_day: date) -> dict[str, str]:
+def _snapshot_manual_refresh_status(app: FastAPI) -> dict[str, object]:
+    status = _ensure_manual_refresh_state(app)
+    lock = app.state.manual_refresh_lock
+    with lock:
+        return dict(status)
+
+
+def _update_manual_refresh_status(app: FastAPI, **updates) -> dict[str, object]:
+    status = _ensure_manual_refresh_state(app)
+    lock = app.state.manual_refresh_lock
+    with lock:
+        status.update(updates)
+        status["last_updated_at"] = datetime.utcnow().isoformat()
+        return dict(status)
+
+
+def _run_manual_refresh(service: FinanceAgentService, settings, trading_day: date, progress_callback=None) -> dict[str, str]:
+    if progress_callback is not None:
+        progress_callback(
+            stage="cleanup",
+            stage_label="清理异常数据",
+            progress_percent=10,
+            message="正在清理周末等无效日评估/预测记录。",
+        )
     cleanup_result = service.cleanup_invalid_market_data()
     news_message = "新闻扫描未执行"
+
+    if progress_callback is not None:
+        progress_callback(
+            stage="news_scan",
+            stage_label="扫描新闻与候选",
+            progress_percent=35,
+            message="正在扫描新闻、候选新股，并尝试更新跟踪池。",
+        )
     try:
         scan_result = service.run_news_discovery_scan(
             trading_date=trading_day,
@@ -90,6 +130,13 @@ def _run_manual_refresh(service: FinanceAgentService, settings, trading_day: dat
     except Exception as exc:
         news_message = f"新闻扫描失败：{exc}"
 
+    if progress_callback is not None:
+        progress_callback(
+            stage="evaluate",
+            stage_label="评估股票池",
+            progress_percent=70,
+            message="正在拉取行情、执行股票池评估并刷新结论。",
+        )
     try:
         evaluated = service.evaluate_all_recommendations(trading_day)
         conclusion_updates = service.get_last_conclusion_updates()
@@ -104,6 +151,14 @@ def _run_manual_refresh(service: FinanceAgentService, settings, trading_day: dat
     except Exception as exc:
         run_message = f"当日评估失败：{exc}"
 
+    if progress_callback is not None:
+        progress_callback(
+            stage="finalize",
+            stage_label="整理结果",
+            progress_percent=95,
+            message="正在汇总执行结果并准备更新前端状态。",
+        )
+
     return {
         "message": (
             f"已清理无效周末记录：日评估{cleanup_result['deleted_daily']}条，"
@@ -116,27 +171,32 @@ def _run_manual_refresh(service: FinanceAgentService, settings, trading_day: dat
 
 def _run_manual_refresh_in_background(app: FastAPI) -> None:
     settings = get_settings()
-    status = _ensure_manual_refresh_state(app)
-    lock = app.state.manual_refresh_lock
-
-    with lock:
-        status.update(
-            {
-                "state": "running",
-                "message": "后台刷新进行中：正在执行新闻扫描、行情评估与日报刷新，请稍后手动刷新页面查看结果。",
-                "started_at": datetime.utcnow().isoformat(),
-                "finished_at": "",
-                "trading_date": _latest_trading_date(date.today()).isoformat(),
-                "duration_seconds": 0.0,
-            }
-        )
+    run_id = datetime.utcnow().strftime("manual-refresh-%Y%m%d-%H%M%S")
+    _update_manual_refresh_status(
+        app,
+        state="running",
+        message="后台刷新进行中：正在执行新闻扫描、行情评估与日报刷新。",
+        started_at=datetime.utcnow().isoformat(),
+        finished_at="",
+        trading_date=_latest_trading_date(date.today()).isoformat(),
+        duration_seconds=0.0,
+        progress_percent=3,
+        stage="booting",
+        stage_label="任务启动中",
+        run_id=run_id,
+    )
 
     start = perf_counter()
     db = SessionLocal()
     try:
         service = build_service_for_scheduler(db)
         trading_day = _latest_trading_date(date.today())
-        result = _run_manual_refresh(service, settings, trading_day)
+        result = _run_manual_refresh(
+            service,
+            settings,
+            trading_day,
+            progress_callback=lambda **kwargs: _update_manual_refresh_status(app, state="running", **kwargs),
+        )
         final_state = "completed"
         final_message = result["message"]
     except Exception as exc:
@@ -146,16 +206,17 @@ def _run_manual_refresh_in_background(app: FastAPI) -> None:
     finally:
         db.close()
 
-    with lock:
-        status.update(
-            {
-                "state": final_state,
-                "message": final_message,
-                "finished_at": datetime.utcnow().isoformat(),
-                "trading_date": trading_day.isoformat(),
-                "duration_seconds": round(perf_counter() - start, 2),
-            }
-        )
+    _update_manual_refresh_status(
+        app,
+        state=final_state,
+        message=final_message,
+        finished_at=datetime.utcnow().isoformat(),
+        trading_date=trading_day.isoformat(),
+        duration_seconds=round(perf_counter() - start, 2),
+        progress_percent=100 if final_state == "completed" else 0,
+        stage="done" if final_state == "completed" else "failed",
+        stage_label="已完成" if final_state == "completed" else "执行失败",
+    )
 
 
 def _build_market_provider_safe(settings) -> object:
@@ -185,9 +246,29 @@ def _build_news_provider_safe(settings) -> object:
 
 
 def _build_notifier(settings):
+    notifiers = [StdoutNotifier()]
     if settings.alert_webhook_url:
-        return WebhookNotifier(settings.alert_webhook_url)
-    return StdoutNotifier()
+        notifiers.append(WebhookNotifier(settings.alert_webhook_url))
+    if settings.openclaw_notifier_enabled:
+        notifiers.append(
+            OpenClawNotifier(
+                command=settings.openclaw_command,
+                profile=settings.openclaw_profile,
+                channel=settings.openclaw_channel,
+                recipient=settings.openclaw_recipient,
+                timeout_seconds=settings.openclaw_timeout_seconds,
+            )
+        )
+    if settings.qq_bot_enabled and settings.qq_bot_base_url and settings.qq_bot_target_id:
+        notifiers.append(
+            QQBotNotifier(
+                base_url=settings.qq_bot_base_url,
+                target_type=settings.qq_bot_target_type,
+                target_id=settings.qq_bot_target_id,
+                access_token=settings.qq_bot_access_token,
+            )
+        )
+    return CompositeNotifier(notifiers)
 
 
 def _build_dashboard_context(request: Request, service: FinanceAgentService, message: str = "") -> dict:
@@ -196,7 +277,7 @@ def _build_dashboard_context(request: Request, service: FinanceAgentService, mes
     daily_records = service.get_daily_tracking_records(limit=500)
     opportunity_rows = service.list_opportunity_stocks(limit=20)
     recommender_rows = service.get_recommender_list()[:12]
-    manual_refresh_status = _ensure_manual_refresh_state(request.app)
+    manual_refresh_status = _snapshot_manual_refresh_status(request.app)
     return {
         "request": request,
         "metrics": metrics,
@@ -383,6 +464,30 @@ def create_app() -> FastAPI:
             ),
         }
 
+    @app.get("/api/manual_refresh/status")
+    def get_manual_refresh_status(request: Request):
+        return _snapshot_manual_refresh_status(request.app)
+
+    @app.post("/api/manual_refresh/start")
+    def start_manual_refresh(request: Request):
+        status = _snapshot_manual_refresh_status(request.app)
+        if status.get("state") == "running":
+            return {
+                "ok": True,
+                "already_running": True,
+                "message": "后台刷新已在执行中。",
+                "status": status,
+            }
+
+        worker = Thread(target=_run_manual_refresh_in_background, args=(request.app,), daemon=True)
+        worker.start()
+        return {
+            "ok": True,
+            "already_running": False,
+            "message": "已启动后台刷新任务。",
+            "status": _snapshot_manual_refresh_status(request.app),
+        }
+
     @app.get("/api/intraday/{stock_code}", response_model=IntradayBarsResponse)
     def get_intraday_bars(
         stock_code: str,
@@ -465,6 +570,41 @@ def create_app() -> FastAPI:
             used_cache=used_cache,
             trades=[item.__dict__ for item in trades],
         )
+
+    @app.get("/api/stocks/{stock_code}/intraday_snapshot")
+    def get_stock_intraday_snapshot(
+        stock_code: str,
+        period: str = "1",
+        adjust: str = "",
+        refresh: bool = False,
+        include_ticks: bool = True,
+        limit: int = 240,
+        tick_limit: int = 120,
+        bar_since: Optional[str] = None,
+        tick_since: Optional[str] = None,
+        delta_only: bool = False,
+        service: FinanceAgentService = Depends(get_service),
+    ):
+        refresh_result = {"refreshed": False, "reason": "storage_only"}
+        if refresh:
+            refresh_result = service.refresh_stock_realtime_context(
+                stock_code=stock_code,
+                period=period,
+                adjust=adjust,
+                include_ticks=include_ticks,
+            )
+        snapshot = service.get_intraday_snapshot(
+            stock_code=stock_code,
+            period=period,
+            adjust=adjust,
+            limit=limit,
+            tick_limit=tick_limit,
+            bar_since=bar_since,
+            tick_since=tick_since,
+            delta_only=delta_only,
+        )
+        snapshot["refresh"] = refresh_result
+        return snapshot
 
     @app.post("/api/intraday/{stock_code}/sync", response_model=IntradaySyncResponse)
     def sync_intraday_stock(
@@ -845,6 +985,15 @@ def create_app() -> FastAPI:
                 min_score=settings.news_discovery_min_score,
                 auto_promote=False,
                 auto_promote_min_score=settings.news_auto_promote_min_score,
+            )
+        if settings.scheduler_intraday_refresh_enabled:
+            add_intraday_refresh_job(
+                scheduler=scheduler,
+                cron_expr=settings.scheduler_intraday_refresh_cron,
+                service_factory=build_service_for_scheduler,
+                limit=settings.scheduler_intraday_refresh_limit,
+                min_change_percent=settings.scheduler_intraday_refresh_min_change_percent,
+                force_notify=settings.scheduler_intraday_refresh_force_notify,
             )
 
         @app.on_event("startup")

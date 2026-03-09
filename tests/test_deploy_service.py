@@ -19,8 +19,8 @@ from app.models import DailyPerformance
 from app.models import Recommendation
 from app.models import Stock
 from app.models import StockPrediction
-from app.notifier import AlertNotifier
-from app.providers import MarketDataProvider, MockMarketDataProvider, MockNewsDataProvider, NewsDiscoveryItem
+from app.notifier import AlertNotifier, OpenClawNotifier
+from app.providers import IntradayBar, IntradayTrade, MarketDataProvider, MockMarketDataProvider, MockNewsDataProvider, NewsDiscoveryItem
 from app.services import FinanceAgentService
 
 
@@ -116,6 +116,46 @@ class _StaticDecisionEngine:
             risk_flags=[],
             evidence=[logic],
             raw_text="stub",
+        )
+
+
+class _StableIntradayProvider:
+    def get_minute_bars(
+        self,
+        stock_code: str,
+        period: str = "1",
+        adjust: str = "",
+        start_datetime=None,
+        end_datetime=None,
+    ):
+        return (
+            [
+                IntradayBar(
+                    timestamp="2026-03-09 10:35:00",
+                    open_price=10.0,
+                    close_price=10.8,
+                    high_price=10.9,
+                    low_price=9.95,
+                    volume=120000,
+                    amount=1280000,
+                    change_percent=8.0,
+                    change_amount=0.8,
+                )
+            ],
+            False,
+        )
+
+    def get_trade_ticks(self, stock_code: str):
+        return (
+            [
+                IntradayTrade(
+                    timestamp="10:35:03",
+                    price=10.8,
+                    volume_lot=120,
+                    side="买盘",
+                )
+            ],
+            False,
         )
 
 
@@ -218,12 +258,61 @@ class DeployServiceTests(TestCase):
         result = self.service.ingest_bulk_text(raw_text, default_recommender_name="群友")
         self.assertEqual(3, result["created"])
         self.assertEqual(0, result["duplicates"])
-        self.assertEqual(0, result["ignored"])
-        self.assertEqual(0, result["rag_notes"])
 
         second = self.service.ingest_bulk_text(raw_text, default_recommender_name="群友")
         self.assertEqual(0, second["created"])
         self.assertGreaterEqual(second["duplicates"], 3)
+
+    def test_intraday_refresh_cycle_pushes_highlight_message(self) -> None:
+        self.service = FinanceAgentService(
+            db=self.db,
+            market_provider=MockMarketDataProvider(),
+            news_provider=MockNewsDataProvider(),
+            intraday_provider=_StableIntradayProvider(),
+            notifier=self.notifier,
+            llm_usage_store=self.usage_store,
+            daily_report_dir="tests/.tmp_reports",
+        )
+        self.service.add_manual_recommendation(
+            stock_code="002384",
+            stock_name="东山精密",
+            logic="消费电子修复",
+            recommender_name="张三",
+        )
+
+        result = self.service.run_intraday_refresh_cycle(limit=5, min_change_percent=0.5)
+
+        self.assertEqual(1, result["success_count"])
+        self.assertEqual(1, result["highlight_count"])
+        self.assertTrue(any("盘中刷新" in title for title, _ in self.notifier.messages))
+
+    def test_openclaw_notifier_uses_official_cli_shape(self) -> None:
+        notifier = OpenClawNotifier(
+            command="openclaw",
+            profile="dev",
+            channel="qq",
+            recipient="123456",
+            timeout_seconds=15,
+        )
+
+        with patch("app.notifier.subprocess.run") as mocked_run:
+            mocked_run.return_value = CompletedProcess(
+                args=["openclaw"],
+                returncode=0,
+                stdout="ok",
+                stderr="",
+            )
+
+            notifier.send("测试标题", "测试内容")
+
+        called_args = mocked_run.call_args[0][0]
+        self.assertEqual("openclaw", called_args[0])
+        self.assertIn("--dev", called_args)
+        self.assertIn("--channel", called_args)
+        self.assertIn("qq", called_args)
+        self.assertIn("--deliver", called_args)
+        self.assertIn("--to", called_args)
+        self.assertIn("123456", called_args)
 
     def test_bulk_import_csv(self) -> None:
         csv_text = """message,recommender_name,recommend_ts

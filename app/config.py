@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     scheduler_cron: str = "30 15 * * 1-5"
     scheduler_news_scan_enabled: bool = True
     scheduler_news_scan_cron: str = "*/20 9-15 * * 1-5"
+    scheduler_intraday_refresh_enabled: bool = False
+    scheduler_intraday_refresh_cron: str = "*/5 9-15 * * 1-5"
+    scheduler_intraday_refresh_limit: int = 12
+    scheduler_intraday_refresh_min_change_percent: float = 0.8
+    scheduler_intraday_refresh_force_notify: bool = False
 
     market_data_provider: str = "baostock"
     intraday_data_provider: str = "freebest"
@@ -41,6 +46,17 @@ class Settings(BaseSettings):
     news_auto_promote_min_score: float = 3.8
 
     alert_webhook_url: str = ""
+    openclaw_notifier_enabled: bool = False
+    openclaw_command: str = "openclaw"
+    openclaw_profile: str = "dev"
+    openclaw_channel: str = "qq"
+    openclaw_recipient: str = ""
+    openclaw_timeout_seconds: int = 30
+    qq_bot_enabled: bool = False
+    qq_bot_base_url: str = ""
+    qq_bot_target_type: str = "group"
+    qq_bot_target_id: str = ""
+    qq_bot_access_token: str = ""
 
     rag_store_path: str = "data/research_notes.jsonl"
     stock_knowledge_dir: str = "data/stocks"

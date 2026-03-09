@@ -1,0 +1,789 @@
+{
+  "generated_at": "2026-03-09T09:36:02",
+  "items": [
+    {
+      "time": "09:25",
+      "price": 5.74,
+      "vol": 4043,
+      "num": 75,
+      "buyorsell": 2
+    },
+    {
+      "time": "09:30",
+      "price": 5.69,
+      "vol": 2903,
+      "num": 36,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:30",
+      "price": 5.71,
+      "vol": 609,
+      "num": 26,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:30",
+      "price": 5.7,
+      "vol": 1789,
+      "num": 40,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:30",
+      "price": 5.69,
+      "vol": 73,
+      "num": 7,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:30",
+      "price": 5.68,
+      "vol": 107,
+      "num": 9,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:30",
+      "price": 5.68,
+      "vol": 43,
+      "num": 3,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:30",
+      "price": 5.68,
+      "vol": 22,
+      "num": 8,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:30",
+      "price": 5.68,
+      "vol": 157,
+      "num": 9,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:30",
+      "price": 5.68,
+      "vol": 232,
+      "num": 5,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:30",
+      "price": 5.68,
+      "vol": 35,
+      "num": 5,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:30",
+      "price": 5.67,
+      "vol": 6,
+      "num": 1,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:30",
+      "price": 5.67,
+      "vol": 76,
+      "num": 3,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:30",
+      "price": 5.68,
+      "vol": 161,
+      "num": 6,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:30",
+      "price": 5.67,
+      "vol": 431,
+      "num": 16,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:30",
+      "price": 5.67,
+      "vol": 417,
+      "num": 12,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:30",
+      "price": 5.67,
+      "vol": 122,
+      "num": 12,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:30",
+      "price": 5.67,
+      "vol": 250,
+      "num": 1,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:30",
+      "price": 5.67,
+      "vol": 1029,
+      "num": 23,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:30",
+      "price": 5.66,
+      "vol": 740,
+      "num": 8,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:30",
+      "price": 5.66,
+      "vol": 103,
+      "num": 6,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:31",
+      "price": 5.66,
+      "vol": 101,
+      "num": 4,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:31",
+      "price": 5.67,
+      "vol": 25,
+      "num": 2,
+      "buyorsell": 2
+    },
+    {
+      "time": "09:31",
+      "price": 5.68,
+      "vol": 140,
+      "num": 8,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:31",
+      "price": 5.68,
+      "vol": 20,
+      "num": 2,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:31",
+      "price": 5.68,
+      "vol": 199,
+      "num": 1,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:31",
+      "price": 5.67,
+      "vol": 26,
+      "num": 3,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:31",
+      "price": 5.67,
+      "vol": 107,
+      "num": 2,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:31",
+      "price": 5.67,
+      "vol": 130,
+      "num": 10,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:31",
+      "price": 5.67,
+      "vol": 42,
+      "num": 3,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:31",
+      "price": 5.69,
+      "vol": 101,
+      "num": 9,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:31",
+      "price": 5.68,
+      "vol": 1,
+      "num": 1,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:31",
+      "price": 5.69,
+      "vol": 1,
+      "num": 1,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:31",
+      "price": 5.69,
+      "vol": 4,
+      "num": 2,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:31",
+      "price": 5.69,
+      "vol": 248,
+      "num": 13,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:31",
+      "price": 5.69,
+      "vol": 24,
+      "num": 4,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:31",
+      "price": 5.69,
+      "vol": 24,
+      "num": 2,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:31",
+      "price": 5.7,
+      "vol": 12,
+      "num": 2,
+      "buyorsell": 2
+    },
+    {
+      "time": "09:31",
+      "price": 5.7,
+      "vol": 45,
+      "num": 3,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:31",
+      "price": 5.71,
+      "vol": 104,
+      "num": 5,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:32",
+      "price": 5.72,
+      "vol": 143,
+      "num": 15,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:32",
+      "price": 5.72,
+      "vol": 9,
+      "num": 3,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:32",
+      "price": 5.71,
+      "vol": 13,
+      "num": 2,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:32",
+      "price": 5.71,
+      "vol": 199,
+      "num": 9,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:32",
+      "price": 5.7,
+      "vol": 98,
+      "num": 2,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:32",
+      "price": 5.71,
+      "vol": 544,
+      "num": 22,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:32",
+      "price": 5.7,
+      "vol": 66,
+      "num": 5,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:32",
+      "price": 5.7,
+      "vol": 7,
+      "num": 1,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:32",
+      "price": 5.7,
+      "vol": 24,
+      "num": 7,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:32",
+      "price": 5.71,
+      "vol": 253,
+      "num": 10,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:32",
+      "price": 5.72,
+      "vol": 109,
+      "num": 5,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:32",
+      "price": 5.74,
+      "vol": 799,
+      "num": 25,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:32",
+      "price": 5.73,
+      "vol": 14,
+      "num": 2,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:32",
+      "price": 5.73,
+      "vol": 10,
+      "num": 2,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:32",
+      "price": 5.73,
+      "vol": 123,
+      "num": 1,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:32",
+      "price": 5.73,
+      "vol": 79,
+      "num": 5,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:32",
+      "price": 5.7,
+      "vol": 578,
+      "num": 10,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:32",
+      "price": 5.72,
+      "vol": 19,
+      "num": 2,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:33",
+      "price": 5.72,
+      "vol": 2,
+      "num": 1,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:33",
+      "price": 5.71,
+      "vol": 119,
+      "num": 4,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:33",
+      "price": 5.71,
+      "vol": 41,
+      "num": 1,
+      "buyorsell": 2
+    },
+    {
+      "time": "09:33",
+      "price": 5.7,
+      "vol": 33,
+      "num": 2,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:33",
+      "price": 5.7,
+      "vol": 4,
+      "num": 1,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:33",
+      "price": 5.71,
+      "vol": 2,
+      "num": 1,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:33",
+      "price": 5.71,
+      "vol": 50,
+      "num": 3,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:33",
+      "price": 5.72,
+      "vol": 100,
+      "num": 2,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:33",
+      "price": 5.72,
+      "vol": 107,
+      "num": 5,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:33",
+      "price": 5.7,
+      "vol": 110,
+      "num": 14,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:33",
+      "price": 5.72,
+      "vol": 161,
+      "num": 6,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:33",
+      "price": 5.71,
+      "vol": 1130,
+      "num": 31,
+      "buyorsell": 2
+    },
+    {
+      "time": "09:33",
+      "price": 5.71,
+      "vol": 26,
+      "num": 1,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:33",
+      "price": 5.71,
+      "vol": 101,
+      "num": 5,
+      "buyorsell": 2
+    },
+    {
+      "time": "09:33",
+      "price": 5.7,
+      "vol": 30,
+      "num": 3,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:33",
+      "price": 5.71,
+      "vol": 4,
+      "num": 1,
+      "buyorsell": 2
+    },
+    {
+      "time": "09:33",
+      "price": 5.71,
+      "vol": 20,
+      "num": 1,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:33",
+      "price": 5.7,
+      "vol": 334,
+      "num": 12,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:34",
+      "price": 5.71,
+      "vol": 191,
+      "num": 2,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:34",
+      "price": 5.71,
+      "vol": 1135,
+      "num": 32,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:34",
+      "price": 5.71,
+      "vol": 9,
+      "num": 2,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:34",
+      "price": 5.7,
+      "vol": 450,
+      "num": 9,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:34",
+      "price": 5.71,
+      "vol": 87,
+      "num": 4,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:34",
+      "price": 5.71,
+      "vol": 11,
+      "num": 2,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:34",
+      "price": 5.7,
+      "vol": 770,
+      "num": 11,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:34",
+      "price": 5.71,
+      "vol": 341,
+      "num": 10,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:34",
+      "price": 5.7,
+      "vol": 90,
+      "num": 1,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:34",
+      "price": 5.7,
+      "vol": 36,
+      "num": 5,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:34",
+      "price": 5.7,
+      "vol": 68,
+      "num": 3,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:34",
+      "price": 5.71,
+      "vol": 21,
+      "num": 3,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:34",
+      "price": 5.71,
+      "vol": 327,
+      "num": 9,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:34",
+      "price": 5.7,
+      "vol": 24,
+      "num": 4,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:34",
+      "price": 5.7,
+      "vol": 19,
+      "num": 2,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:35",
+      "price": 5.7,
+      "vol": 45,
+      "num": 4,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:35",
+      "price": 5.7,
+      "vol": 8,
+      "num": 2,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:35",
+      "price": 5.7,
+      "vol": 37,
+      "num": 5,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:35",
+      "price": 5.71,
+      "vol": 50,
+      "num": 3,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:35",
+      "price": 5.7,
+      "vol": 199,
+      "num": 12,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:35",
+      "price": 5.69,
+      "vol": 373,
+      "num": 3,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:35",
+      "price": 5.69,
+      "vol": 39,
+      "num": 2,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:35",
+      "price": 5.69,
+      "vol": 1437,
+      "num": 25,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:35",
+      "price": 5.69,
+      "vol": 134,
+      "num": 4,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:35",
+      "price": 5.68,
+      "vol": 21,
+      "num": 2,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:35",
+      "price": 5.68,
+      "vol": 24,
+      "num": 4,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:35",
+      "price": 5.68,
+      "vol": 30,
+      "num": 3,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:35",
+      "price": 5.69,
+      "vol": 3,
+      "num": 2,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:35",
+      "price": 5.68,
+      "vol": 8,
+      "num": 1,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:35",
+      "price": 5.68,
+      "vol": 86,
+      "num": 5,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:35",
+      "price": 5.68,
+      "vol": 1261,
+      "num": 70,
+      "buyorsell": 1
+    },
+    {
+      "time": "09:35",
+      "price": 5.68,
+      "vol": 150,
+      "num": 6,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:35",
+      "price": 5.68,
+      "vol": 1512,
+      "num": 49,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:35",
+      "price": 5.67,
+      "vol": 141,
+      "num": 1,
+      "buyorsell": 2
+    },
+    {
+      "time": "09:35",
+      "price": 5.67,
+      "vol": 15,
+      "num": 1,
+      "buyorsell": 0
+    },
+    {
+      "time": "09:36",
+      "price": 5.66,
+      "vol": 39,
+      "num": 5,
+      "buyorsell": 1
+    }
+  ]
+}

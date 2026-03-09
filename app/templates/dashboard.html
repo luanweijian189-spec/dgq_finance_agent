@@ -242,6 +242,90 @@
             color: var(--text-muted);
             font-size: 13px;
         }
+        .task-status-panel {
+            margin-top: 12px;
+            padding: 14px 16px;
+            border-radius: 10px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            min-width: min(680px, 100%);
+        }
+        .task-status-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .task-status-meta {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        .task-progress {
+            width: 100%;
+            height: 10px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: rgba(255,255,255,.06);
+            border: 1px solid rgba(255,255,255,.05);
+            margin-bottom: 10px;
+        }
+        .task-progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
+            transition: width .3s ease;
+        }
+        .task-status-message {
+            color: var(--text);
+            font-size: 13px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+        }
+        .task-status-running {
+            background: rgba(79,142,247,.15);
+            color: var(--accent);
+            border: 1px solid rgba(79,142,247,.25);
+        }
+        .task-status-completed {
+            background: rgba(34,197,94,.15);
+            color: var(--green);
+            border: 1px solid rgba(34,197,94,.25);
+        }
+        .task-status-failed {
+            background: rgba(239,68,68,.15);
+            color: var(--red);
+            border: 1px solid rgba(239,68,68,.25);
+        }
+        .task-status-idle {
+            background: rgba(148,163,184,.12);
+            color: #cbd5e1;
+            border: 1px solid rgba(148,163,184,.2);
+        }
+        .btn[disabled] {
+            opacity: .65;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .btn-loading::before {
+            content: "";
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,.35);
+            border-top-color: #fff;
+            animation: spin .8s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
 
         /* ===== Tables ===== */
         .table-wrapper {
@@ -489,30 +573,38 @@
             <div class="section-title"><span class="dot"></span>手动任务中心</div>
             <div class="toolbar-desc">一键执行一次新闻扫描 + 股票池当日评估 + 日报刷新，适合盘后或调试时手动更新。</div>
             {% if manual_refresh_status is defined %}
-            <div class="toolbar-desc" style="margin-top: 8px;">
-                后台任务状态：
-                {% if manual_refresh_status.state == 'running' %}
-                    执行中
-                {% elif manual_refresh_status.state == 'completed' %}
-                    已完成
-                {% elif manual_refresh_status.state == 'failed' %}
-                    执行失败
-                {% else %}
-                    空闲
-                {% endif %}
-                {% if manual_refresh_status.trading_date %}
-                    ｜ 交易日 {{ manual_refresh_status.trading_date }}
-                {% endif %}
-                {% if manual_refresh_status.duration_seconds %}
-                    ｜ 耗时 {{ '%.2f'|format(manual_refresh_status.duration_seconds) }}s
-                {% endif %}
+            <div class="task-status-panel" id="manual-refresh-panel" data-status='{{ manual_refresh_status|tojson if manual_refresh_status is defined else "{}" }}'>
+                <div class="task-status-top">
+                    <div class="task-status-meta">
+                        <span class="status-badge {% if manual_refresh_status.state == 'running' %}task-status-running{% elif manual_refresh_status.state == 'completed' %}task-status-completed{% elif manual_refresh_status.state == 'failed' %}task-status-failed{% else %}task-status-idle{% endif %}" id="manual-refresh-badge">
+                            {% if manual_refresh_status.state == 'running' %}
+                                执行中
+                            {% elif manual_refresh_status.state == 'completed' %}
+                                已完成
+                            {% elif manual_refresh_status.state == 'failed' %}
+                                执行失败
+                            {% else %}
+                                空闲
+                            {% endif %}
+                        </span>
+                        <span id="manual-refresh-stage">当前阶段：{{ manual_refresh_status.stage_label or '未开始' }}</span>
+                        <span id="manual-refresh-trading-date">{% if manual_refresh_status.trading_date %}交易日 {{ manual_refresh_status.trading_date }}{% endif %}</span>
+                        <span id="manual-refresh-duration">{% if manual_refresh_status.duration_seconds %}耗时 {{ '%.2f'|format(manual_refresh_status.duration_seconds) }}s{% endif %}</span>
+                    </div>
+                    <div class="task-status-meta">
+                        <span id="manual-refresh-updated">{% if manual_refresh_status.last_updated_at %}最近更新 {{ manual_refresh_status.last_updated_at }}{% endif %}</span>
+                    </div>
+                </div>
+                <div class="task-progress" aria-hidden="true">
+                    <div class="task-progress-bar" id="manual-refresh-progress"></div>
+                </div>
+                <div class="task-status-message" id="manual-refresh-message">{{ manual_refresh_status.message }}</div>
             </div>
-            <div class="toolbar-desc" style="margin-top: 4px;">{{ manual_refresh_status.message }}</div>
             {% endif %}
         </div>
         <div class="toolbar-actions">
-            <form action="/manual/refresh" method="post">
-                <button type="submit" class="btn btn-primary">🔄 一键抓取并更新</button>
+            <form action="/manual/refresh" method="post" id="manual-refresh-form">
+                <button type="submit" class="btn btn-primary" id="manual-refresh-button">🔄 一键抓取并更新</button>
             </form>
         </div>
     </div>
@@ -936,6 +1028,11 @@
 </div>
 
 <script>
+    const manualRefreshPanel = document.getElementById('manual-refresh-panel');
+    const initialManualRefreshStatus = manualRefreshPanel
+        ? JSON.parse(manualRefreshPanel.dataset.status || '{}')
+        : {};
+
     // Live clock
     function updateClock() {
         const now = new Date();
@@ -946,6 +1043,99 @@
     }
     updateClock();
     setInterval(updateClock, 1000);
+
+    function formatDateTime(value) {
+        if (!value) return '';
+        return String(value).replace('T', ' ').replace(/\.\d+$/, '');
+    }
+
+    function mapRefreshState(state) {
+        if (state === 'running') return { text: '执行中', cls: 'task-status-running' };
+        if (state === 'completed') return { text: '已完成', cls: 'task-status-completed' };
+        if (state === 'failed') return { text: '执行失败', cls: 'task-status-failed' };
+        return { text: '空闲', cls: 'task-status-idle' };
+    }
+
+    function updateRefreshButton(status) {
+        const button = document.getElementById('manual-refresh-button');
+        if (!button) return;
+        const isRunning = status && status.state === 'running';
+        button.disabled = !!isRunning;
+        button.classList.toggle('btn-loading', !!isRunning);
+        button.textContent = isRunning ? '执行中，请稍候…' : '🔄 一键抓取并更新';
+    }
+
+    function renderManualRefreshStatus(status) {
+        if (!status || !document.getElementById('manual-refresh-panel')) return;
+        const badge = document.getElementById('manual-refresh-badge');
+        const stage = document.getElementById('manual-refresh-stage');
+        const tradingDate = document.getElementById('manual-refresh-trading-date');
+        const duration = document.getElementById('manual-refresh-duration');
+        const updated = document.getElementById('manual-refresh-updated');
+        const message = document.getElementById('manual-refresh-message');
+        const progress = document.getElementById('manual-refresh-progress');
+
+        const mapped = mapRefreshState(status.state);
+        badge.textContent = mapped.text;
+        badge.className = `status-badge ${mapped.cls}`;
+        stage.textContent = `当前阶段：${status.stage_label || '未开始'}`;
+        tradingDate.textContent = status.trading_date ? `交易日 ${status.trading_date}` : '';
+        duration.textContent = status.duration_seconds ? `耗时 ${Number(status.duration_seconds).toFixed(2)}s` : '';
+        updated.textContent = status.last_updated_at ? `最近更新 ${formatDateTime(status.last_updated_at)}` : '';
+        message.textContent = status.message || '尚未执行手动刷新';
+        progress.style.width = `${Math.max(0, Math.min(Number(status.progress_percent || 0), 100))}%`;
+
+        updateRefreshButton(status);
+    }
+
+    let manualRefreshPollTimer = null;
+    async function pollManualRefreshStatus() {
+        try {
+            const response = await fetch('/api/manual_refresh/status', { cache: 'no-store' });
+            if (!response.ok) return;
+            const status = await response.json();
+            renderManualRefreshStatus(status);
+            if (status.state !== 'running' && manualRefreshPollTimer) {
+                clearInterval(manualRefreshPollTimer);
+                manualRefreshPollTimer = null;
+            }
+        } catch (_error) {
+            // ignore transient polling errors
+        }
+    }
+
+    function ensureManualRefreshPolling() {
+        if (manualRefreshPollTimer) return;
+        manualRefreshPollTimer = setInterval(pollManualRefreshStatus, 2000);
+    }
+
+    const manualRefreshForm = document.getElementById('manual-refresh-form');
+    if (manualRefreshForm) {
+        manualRefreshForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            try {
+                const response = await fetch('/api/manual_refresh/start', { method: 'POST' });
+                if (!response.ok) {
+                    manualRefreshForm.submit();
+                    return;
+                }
+                const payload = await response.json();
+                if (payload.status) {
+                    renderManualRefreshStatus(payload.status);
+                }
+                ensureManualRefreshPolling();
+                pollManualRefreshStatus();
+            } catch (_error) {
+                manualRefreshForm.submit();
+            }
+        });
+    }
+
+    renderManualRefreshStatus(initialManualRefreshStatus);
+    if (initialManualRefreshStatus && initialManualRefreshStatus.state === 'running') {
+        ensureManualRefreshPolling();
+        pollManualRefreshStatus();
+    }
 </script>
 </body>
 </html>

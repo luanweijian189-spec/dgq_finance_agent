@@ -23,11 +23,16 @@
 5. 告警/订阅推送链路
    - `/alert on 代码` 指令与 `POST /api/alerts/subscribe` API。
    - 评分与收益触发风险告警，支持 stdout / webhook 推送。
+   - 新增 QQ 通知 MVP，可通过 NapCat / go-cqhttp 风格 HTTP API 接入群或私聊推送。
 
 6. 真实数据源可切换
    - 行情源支持 `baostock`（默认推荐）
    - 新闻逻辑验证支持 `mock / tushare / webhook / sites`（站点白名单聚合校验）
    - 提供系统可用性检查接口：`GET /api/system/check`
+
+7. 官方 QQ 通知通道
+   - 支持通过 OpenClaw 已配置的 QQ channel 发送主动通知。
+   - 适用于“定频刷新 → 发现增量 → 主动推送到 QQ”的官方接入方式。
 
 ## 架构
 
@@ -52,6 +57,10 @@ app/
 ```bash
 cp .env.example .env
 ```
+
+本地直接运行时，默认使用：
+
+- `DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/dgq_finance_agent`
 
 默认已配置 `MARKET_DATA_PROVIDER=baostock`，如需 mock 可手动改回。
 
@@ -89,7 +98,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-应用容器会自动执行 `alembic upgrade head` 后启动 API。
+应用容器内部会自动把 `DATABASE_URL` 覆盖为 `db:5432`，并执行 `alembic upgrade head` 后启动 API。
 
 ## 核心 API
 - `POST /api/messages/ingest`：写入微信/文本消息并解析推荐。
@@ -106,6 +115,69 @@ docker compose up --build
 - `POST /api/news/scan`：执行新闻定时扫描（可手动触发）。
 - `GET /api/news/candidates`：查看候选新股队列。
 - `POST /api/news/candidates/promote`：将候选新股晋升到跟踪池。
+
+## QQ 通知（优先官方 OpenClaw 方案）
+
+当前实现的是一版可插拔通知通道：
+
+1. 系统按 `SCHEDULER_INTRADAY_REFRESH_CRON` 定频刷新活跃股票池的盘中数据。
+2. 每轮会比较刷新前后的维护快照。
+3. 当涨跌幅变化超过 `SCHEDULER_INTRADAY_REFRESH_MIN_CHANGE_PERCENT` 时，自动生成摘要消息。
+4. 消息会同时发往 stdout、通用 webhook，以及可选的 QQ 通道。
+
+### 方案 A：官方 OpenClaw QQ 通道（推荐）
+
+如果你已经在腾讯云 / OpenClaw 环境里把 QQ channel 配好了，系统可以直接调用 OpenClaw CLI 发消息。
+
+配置项：
+
+- `OPENCLAW_NOTIFIER_ENABLED=true`
+- `OPENCLAW_COMMAND=openclaw`
+- `OPENCLAW_PROFILE=dev`
+- `OPENCLAW_CHANNEL=qq`
+- `OPENCLAW_RECIPIENT=`
+- `OPENCLAW_TIMEOUT_SECONDS=30`
+
+发送逻辑等价于：
+
+```bash
+openclaw --dev agent --channel qq --deliver -m '盘中刷新 10:35
+本轮刷新 8 只，成功 8 只，显著变化 2 只。'
+```
+
+如果 OpenClaw 侧需要明确会话，可配置 `OPENCLAW_RECIPIENT`，系统会自动附加 `--to` 参数。
+
+### 环境变量
+
+- `SCHEDULER_INTRADAY_REFRESH_ENABLED=true`
+- `SCHEDULER_INTRADAY_REFRESH_CRON=*/5 9-15 * * 1-5`
+- `SCHEDULER_INTRADAY_REFRESH_LIMIT=12`
+- `SCHEDULER_INTRADAY_REFRESH_MIN_CHANGE_PERCENT=0.8`
+
+### 方案 B：HTTP 中继 QQ Bot（保留兼容）
+
+如果你暂时不走 OpenClaw，也仍可使用已有 HTTP 中继模式：
+
+- `QQ_BOT_ENABLED=true`
+- `QQ_BOT_BASE_URL=http://127.0.0.1:3000`
+- `QQ_BOT_TARGET_TYPE=group`
+- `QQ_BOT_TARGET_ID=123456789`
+- `QQ_BOT_ACCESS_TOKEN=`
+
+### 接入说明
+
+- 优先建议用 OpenClaw 已配置好的 QQ channel，这样通知侧完全复用官方支持链路。
+- HTTP 中继模式仅作为兼容兜底保留。
+- HTTP 请求体示例：
+
+```json
+{
+   "group_id": 123456789,
+   "message": "盘中刷新 10:35\n本轮刷新 8 只，成功 8 只，显著变化 2 只。"
+}
+```
+
+如果你本地已经有 NapCat 或 go-cqhttp 风格 HTTP 服务，这版也可以直接接上。
 
 ## Wechaty / OpenClaw 对接方式
 外部连接器只需把消息转发到 webhook：
@@ -358,3 +430,11 @@ python -m unittest discover -s tests -v
 - 将 `MockNewsDataProvider` 替换为新闻抓取 + NLP 逻辑验证。
 - 配置企业微信/钉钉机器人 webhook 作为告警输出。
 - 在 Wechaty 服务中启用历史回补任务并调用 webhook 入库。
+
+
+cd /Users/weijianluan/luan/finance/dgq_finance_agent
+cp .env.example .env
+python -m pip install -r requirements.txt
+docker compose up -d db
+alembic upgrade head
+python run.py
