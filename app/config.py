@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     repo_ops_max_files: int = 20
     repo_ops_allowed_globs: str = "app/**,scripts/**,tests/**,README.md,design_docs/**"
     repo_ops_blocked_globs: str = ".env,.env.*,data/**,runtime/**,.venv/**"
+    repo_ops_local_autopilot_script: str = "scripts/repo_ops_autopilot.py"
     openclaw_notifier_enabled: bool = False
     openclaw_command: str = "openclaw"
     openclaw_profile: str = "dev"
@@ -116,7 +117,9 @@ class Settings(BaseSettings):
     analysis_model: str = "qwen2.5:3b"
     llm_api_base: str = "http://127.0.0.1:11434/v1"
     llm_api_key: str = ""
+    llm_api_mode: str = "auto"
     llm_api_chat_path: str = "/chat/completions"
+    llm_api_completions_path: str = "/completions"
     llm_api_timeout_seconds: int = 15
 
 

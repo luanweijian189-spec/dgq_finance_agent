@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -105,8 +106,12 @@ class RepoOpsApiClient:
 
 
 class LocalRepoOpsApiClient(RepoOpsApiClient):
-    def __init__(self, repo_root: str) -> None:
+    def __init__(self, repo_root: str, autopilot_script: str = "scripts/repo_ops_autopilot.py") -> None:
         self.repo_root = Path(repo_root).resolve()
+        script_path = Path(autopilot_script)
+        if not script_path.is_absolute():
+            script_path = (self.repo_root / script_path).resolve()
+        self.autopilot_script = script_path
 
     @staticmethod
     def _tail(text: str, lines: int = 80) -> str:
@@ -168,11 +173,59 @@ class LocalRepoOpsApiClient(RepoOpsApiClient):
         if not task.policy.allow_git_write:
             return RepoOpsDispatchResult(
                 status="ready",
-                latest_message="本地 provider 只做编排占位；待明天接入外部高性能模型 API 后即可真正执行写代码。",
+                latest_message="当前策略禁止 git 写入，请先开启 REPO_OPS_ALLOW_GIT_WRITE=true。",
+            )
+        if not task.policy.allow_shell:
+            return RepoOpsDispatchResult(
+                status="blocked",
+                latest_message="当前策略禁止执行本地校验命令，请先开启 REPO_OPS_ALLOW_SHELL=true。",
+            )
+        if not self.autopilot_script.exists():
+            return RepoOpsDispatchResult(
+                status="failed",
+                latest_message=f"未找到本地 autopilot 脚本：{self.autopilot_script}",
+            )
+
+        command = [
+            sys.executable,
+            str(self.autopilot_script),
+            "--objective",
+            task.objective,
+            "--context",
+            task.context,
+            "--max-files",
+            str(task.policy.max_files),
+            "--allowed-globs",
+            ",".join(task.policy.allowed_globs),
+            "--blocked-globs",
+            ",".join(task.policy.blocked_globs),
+        ]
+        result = subprocess.run(
+            command,
+            cwd=str(self.repo_root),
+            capture_output=True,
+            text=True,
+            timeout=1800,
+        )
+        output = self._tail((result.stdout or "") + "\n" + (result.stderr or ""), lines=160)
+        if result.returncode != 0:
+            return RepoOpsDispatchResult(
+                status="failed",
+                latest_message="本地 autopilot 执行失败，请查看 run_output。",
+                run_output=output,
+                metadata={
+                    "autopilot_script": str(self.autopilot_script),
+                    "autopilot_exit_code": result.returncode,
+                },
             )
         return RepoOpsDispatchResult(
-            status="blocked",
-            latest_message="出于安全原因，当前本地 provider 不直接执行 git 写入操作；请切换到 HTTP provider。",
+            status="executed",
+            latest_message="本地 autopilot 执行完成，已尝试自动改码并校验。",
+            run_output=output,
+            metadata={
+                "autopilot_script": str(self.autopilot_script),
+                "autopilot_exit_code": result.returncode,
+            },
         )
 
     def summarize(self, task: RepoOpsTask) -> RepoOpsDispatchResult:
@@ -438,7 +491,13 @@ def build_repo_ops_manager(settings) -> RepoOpsManager:
             timeout_seconds=getattr(settings, "repo_ops_timeout_seconds", 30),
         )
     else:
-        client = LocalRepoOpsApiClient(repo_root=str(repo_root))
+        client = LocalRepoOpsApiClient(
+            repo_root=str(repo_root),
+            autopilot_script=str(
+                getattr(settings, "repo_ops_local_autopilot_script", "scripts/repo_ops_autopilot.py")
+                or "scripts/repo_ops_autopilot.py"
+            ),
+        )
     workspace_value = str(getattr(settings, "repo_ops_workspace", ".") or ".")
     workspace = Path(workspace_value)
     if not workspace.is_absolute():

@@ -208,8 +208,31 @@ docker compose up --build
 
 ### provider 切换方式
 
-- `REPO_OPS_PROVIDER=local`：默认，本地只做任务记录、git 状态采样和计划生成
+- `REPO_OPS_PROVIDER=local`：默认，本地可在安全开关放行后执行“LLM 生成补丁 -> git apply -> 自动校验”
 - `REPO_OPS_PROVIDER=http`：转发给外部高性能 agent API，真正执行代码修改和仓库治理
+
+### 本地 autopilot（MVP）如何开启
+
+先打开以下开关（建议在测试环境）：
+
+- `REPO_OPS_REQUIRE_HUMAN_APPROVAL=true`（保留人工闸门）
+- `REPO_OPS_ALLOW_GIT_WRITE=true`
+- `REPO_OPS_ALLOW_SHELL=true`
+- `REPO_OPS_LOCAL_AUTOPILOT_SCRIPT=scripts/repo_ops_autopilot.py`
+
+然后走命令链路：
+
+1. `/repo auto <任务描述>` 或 `/repo new <任务描述>`
+2. `/repo plan <task_id>` 查看计划
+3. `/repo approve <task_id> 允许执行`（如果启用人工审批）
+4. `/repo run <task_id>` 触发本地自动改码与校验
+5. `/repo summary <task_id>` 查看执行总结
+
+说明：
+
+- 本地 autopilot 会严格受 `REPO_OPS_ALLOWED_GLOBS`、`REPO_OPS_BLOCKED_GLOBS`、`REPO_OPS_MAX_FILES` 限制。
+- 默认会对变更过的 Python 文件做 `py_compile`，并执行模型返回的 1 条关键验证命令。
+- 若校验失败会自动回滚本轮补丁，不会把失败改动留在仓库里。
 
 ### 明天接入更强模型 API 时你要做的事
 
@@ -857,7 +880,9 @@ message,recommender_name,recommend_ts
 - 非荐股资讯会写入 `research_notes.jsonl`，按股票名/代码检索上下文。
 - 每日文件为每只股票生成“智能分析 + 纠偏建议”：
    - 默认采用 LLM API（OpenAI 兼容接口），通过环境变量无痛切换模型与供应商。
-   - 关键变量：`ANALYSIS_MODEL`、`LLM_API_BASE`、`LLM_API_KEY`、`LLM_API_CHAT_PATH`。
+   - 关键变量：`ANALYSIS_MODEL`、`LLM_API_BASE`、`LLM_API_KEY`、`LLM_API_MODE`、`LLM_API_CHAT_PATH`、`LLM_API_COMPLETIONS_PATH`。
+   - `LLM_API_MODE=auto` 时会先走 `chat/completions`，失败后自动回退到 `completions`（适合 openai-completions 网关）。
+   - 可用 `python scripts/smoke_llm_api.py` 快速验证配置是否打通。
    - 当 LLM 配置不可用时，会输出事实型摘要并提示检查 LLM 配置。
 
 ### 5) 记忆系统（RAG）设计预留

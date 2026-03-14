@@ -14,6 +14,8 @@ class StockAnalysisAgent:
         api_key: str = "",
         api_base: str = "",
         chat_path: str = "/chat/completions",
+        completions_path: str = "/completions",
+        api_mode: str = "auto",
         timeout_seconds: int = 15,
         usage_store: LLMUsageStore | None = None,
     ) -> None:
@@ -23,6 +25,8 @@ class StockAnalysisAgent:
             api_key=api_key,
             model=model_name,
             chat_path=chat_path,
+            completions_path=completions_path,
+            api_mode=api_mode,
             timeout_seconds=timeout_seconds,
             usage_store=usage_store,
             feature_name="analysis_agent",
