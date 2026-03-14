@@ -124,9 +124,10 @@ if [[ "$SKIP_MIGRATION" != "1" ]]; then
 fi
 
 log "完成。建议后续执行："
-log "  1) 检查 .env 中 DATABASE_URL / TUSHARE_TOKEN / LLM_API_* / OPENCLAW_* / QQ_OFFICIAL_BOT_*"
+log "  1) 检查 .env 中 DATABASE_URL / TUSHARE_TOKEN / LLM_API_* / DINGTALK_* / OPENCLAW_* / QQ_OFFICIAL_BOT_*"
 log "  2) 安装 systemd 模板: deploy/tencent/dgq-finance-agent.service"
 log "  3) 配置 Nginx: deploy/tencent/nginx.dgq-finance-agent.conf"
-log "  4) 官方 QQ Bot 联调: scripts/print_qq_official_bot_setup_info.sh"
-log "  5) 官方 QQ Bot 冒烟: scripts/smoke_qq_official_webhook.sh"
-log "  6) OpenClaw 回调兼容冒烟: scripts/smoke_openclaw_qq_webhook.sh"
+log "  4) 钉钉参数检查: scripts/print_dingtalk_setup_info.sh"
+log "  5) 钉钉后端冒烟: scripts/smoke_dingtalk_webhook.sh"
+log "  6) 如需 QQ 兼容，再看: scripts/print_qq_official_bot_setup_info.sh"
+log "  7) OpenClaw 回调兼容冒烟: scripts/smoke_openclaw_qq_webhook.sh"

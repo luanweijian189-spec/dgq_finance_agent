@@ -79,3 +79,4 @@
 {"ts": "2026-03-09T01:12:42.788844", "stock_code": "002384", "stock_name": "东山精密", "source": "manual_stock_research", "operator": "研究员A", "entry_type": "stock_research", "content": "东山精密：订单验证窗口临近，重点看下周客户排产。"}
 {"ts": "2026-03-09T01:12:42.801493", "stock_code": "002384", "stock_name": "东山精密", "source": "manual_bulk", "operator": "研究员A", "entry_type": "recommendation", "content": "继续跟踪东山精密，消费电子复苏逻辑还在，重点看下周订单验证。"}
 {"ts": "2026-03-09T01:12:42.958559", "stock_code": "002384", "stock_name": "东山精密", "source": "manual_stock_research", "operator": "研究员A", "entry_type": "stock_research", "content": "东山精密：下周重点看订单验证。"}
+{"ts": "2026-03-10T12:20:30.696716", "stock_code": "002384", "stock_name": "东山精密", "source": "dingtalk_stream", "operator": "栾为坚", "entry_type": "stock_research", "content": "反馈给我东山精密最新分析"}

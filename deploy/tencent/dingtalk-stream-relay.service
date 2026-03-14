@@ -1,0 +1,18 @@
+[Unit]
+Description=DGQ DingTalk Stream Relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/dgq_finance_agent
+EnvironmentFile=/home/ubuntu/dgq_finance_agent/.env
+ExecStart=/usr/bin/env bash /home/ubuntu/dgq_finance_agent/scripts/start_dingtalk_stream_relay.sh
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

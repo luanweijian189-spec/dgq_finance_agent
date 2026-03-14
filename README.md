@@ -101,6 +101,7 @@ docker compose up --build
 应用容器内部会自动把 `DATABASE_URL` 覆盖为 `db:5432`，并执行 `alembic upgrade head` 后启动 API。
 
 ## 核心 API
+
 - `POST /api/messages/ingest`：写入微信/文本消息并解析推荐。
 - `POST /api/messages/import_text`：批量导入复制文本（支持自由文本/JSON/CSV）。
 - `POST /api/research/ingest`：录入资讯类文本（RAG资料，不直接当荐股）。
@@ -113,15 +114,163 @@ docker compose up --build
 - `POST /api/connectors/wechat/webhook`：Wechaty/OpenClaw 转发入口。
 - `POST /api/connectors/openclaw/webhook`：OpenClaw / QQ 双向通信入口，支持入库与命令回执。
 - `POST /api/connectors/qq/webhook`：与 OpenClaw webhook 等价的 QQ 别名入口。
+- `POST /api/connectors/dingtalk/webhook`：钉钉 Stream relay / HTTP 回调兼容入口。
+- `GET /api/dev/agent-matrix/roles`：查看代码开发 agent 矩阵角色定义。
+- `POST /api/dev/agent-matrix/tasks`：创建代码任务，可选择立即分发到本地 loop 或外部 API。
+- `POST /api/dev/agent-matrix/tasks/{task_id}/dispatch`：分发指定代码任务。
+- `POST /api/dev/agent-matrix/tasks/{task_id}/summary`：汇总指定代码任务状态。
+- `GET /api/dev/repo-ops/policy`：查看当前代码库自动化策略与 provider。
+- `POST /api/dev/repo-ops/tasks`：创建 repo-ops 任务，可自动生成计划并转交外部 API。
+- `POST /api/dev/repo-ops/tasks/{task_id}/plan`：生成代码库执行计划。
+- `POST /api/dev/repo-ops/tasks/{task_id}/execute`：触发 repo-ops 执行。
+- `POST /api/dev/repo-ops/tasks/{task_id}/approve`：人工审批 repo-ops 任务。
+- `POST /api/dev/repo-ops/tasks/{task_id}/summary`：汇总 repo-ops 任务状态。
 - `GET /api/system/check`：数据库 + 行情源 +新闻源可用性检查。
 - `POST /api/news/scan`：执行新闻定时扫描（可手动触发）。
 - `GET /api/news/candidates`：查看候选新股队列。
 - `POST /api/news/candidates/promote`：将候选新股晋升到跟踪池。
 
+## Agent 矩阵：让钉钉 / OpenClaw 驱动代码库
+
+仓库现已内置一层“消息 -> 代码任务”的编排层，目标是把钉钉、OpenClaw 和后续外部 agent API 串起来。
+
+默认矩阵包含 6 个角色：
+
+1. 任务协调 agent
+2. 方案规划 agent
+3. 编码执行 agent
+4. 代码评审 agent
+5. 测试验证 agent
+6. 交付运营 agent
+
+### 你现在可以这样用
+
+#### 1. 在钉钉 / OpenClaw 里发命令
+
+- `/dev new 接入审批流回调并补测试`
+- `/dev run am-xxxxxx`
+- `/dev status`
+- `/dev summary am-xxxxxx`
+- `/dev matrix`
+
+#### 2. 直接走 HTTP API
+
+创建任务：
+
+- `POST /api/dev/agent-matrix/tasks`
+
+请求体示例：
+
+```json
+{
+   "objective": "给回测模块增加策略版本比较接口",
+   "context": "要求复用现有 FastAPI 与 SQLAlchemy 结构",
+   "operator": "openclaw",
+   "source": "dingtalk",
+   "auto_dispatch": true,
+   "auto_check": false
+}
+```
+
+### provider 切换方式
+
+通过环境变量控制：
+
+- `AGENT_MATRIX_PROVIDER=local`：默认，本地生成 agent brief，并调用 [scripts/copilot_hybrid_loop.sh](scripts/copilot_hybrid_loop.sh)
+- `AGENT_MATRIX_PROVIDER=http`：把任务转发到外部 agent API
+
+当你后续把 OpenClaw + 自建 agent 矩阵服务接上后，只需要替换：
+
+- `AGENT_MATRIX_HTTP_BASE_URL`
+- `AGENT_MATRIX_HTTP_API_KEY`
+
+现有钉钉 / OpenClaw 指令和后端 API 不需要再重写。
+
+## Repo Ops：面向最终目标的下一层
+
+为了让“钉钉 / OpenClaw -> agent矩阵 -> 自动管理代码库”真正落地，仓库中新增了一层 `repo-ops` 编排接口。
+
+它和 `agent-matrix` 的分工是：
+
+- `agent-matrix`：负责拆解任务、角色矩阵、调度状态
+- `repo-ops`：负责代码库策略、仓库约束、审批与执行接口
+
+### 现在可直接用的消息命令
+
+- `/repo new <任务>`：创建代码库任务
+- `/repo auto <任务>`：一键创建 agent + repo 双任务
+- `/repo plan <task_id>`：生成仓库执行计划
+- `/repo run <task_id>`：触发 repo-ops 执行
+- `/repo approve <task_id> [备注]`：人工审批
+- `/repo summary <task_id>`：汇总状态
+- `/repo status [task_id]`：查看任务列表/详情
+- `/repo policy`：查看当前安全策略
+
+### provider 切换方式
+
+- `REPO_OPS_PROVIDER=local`：默认，本地只做任务记录、git 状态采样和计划生成
+- `REPO_OPS_PROVIDER=http`：转发给外部高性能 agent API，真正执行代码修改和仓库治理
+
+### 明天接入更强模型 API 时你要做的事
+
+只需要补这两个配置：
+
+- `REPO_OPS_HTTP_BASE_URL`
+- `REPO_OPS_HTTP_API_KEY`
+
+推荐同时把：
+
+- `AGENT_MATRIX_PROVIDER=http`
+- `REPO_OPS_PROVIDER=http`
+
+这样钉钉 / OpenClaw 的消息入口不用变，系统就会把开发任务转发给外部 agent 编排服务。
+
+详细设计见 [design_docs/agent_repo_autopilot.md](design_docs/agent_repo_autopilot.md)。
+
+## 钉钉机器人（推荐主方案）
+
+当前更推荐直接切到钉钉。原因很简单：钉钉 `Stream` 模式不需要公网 HTTPS 回调，适合个人/小团队快速把“群里 @机器人 + 主动推送”跑通。
+
+当前仓库已补齐一版钉钉双向链路：
+
+1. 钉钉开放平台创建企业内部应用机器人
+2. 消息接收模式选择 `Stream` 模式
+3. 运行仓库内置的 Stream relay，自动接收群里 `@机器人` 或单聊消息
+4. relay 把消息转发到后端 `POST /api/connectors/dingtalk/webhook`
+5. 后端复用现有荐股入库 / `/status` / `/who` / `/top` 等命令处理链路
+6. relay 读取后端返回的 `reply_message`，直接回到当前钉钉会话
+7. 定时告警/日报通过 [app/dingtalk_bot.py](app/dingtalk_bot.py) 主动发群消息
+
+新增配置项：
+
+- `DINGTALK_BOT_ENABLED=true`
+- `DINGTALK_CLIENT_ID=你的钉钉应用Client ID`
+- `DINGTALK_CLIENT_SECRET=你的钉钉应用Client Secret`
+- `DINGTALK_ROBOT_CODE=你的机器人编码`
+- `DINGTALK_OPEN_CONVERSATION_ID=`（主动发群消息时需要）
+- `DINGTALK_STREAM_BACKEND_WEBHOOK_URL=http://127.0.0.1:8000/api/connectors/dingtalk/webhook`
+- `DINGTALK_STREAM_SHARED_TOKEN=与你的 CONNECTOR_SHARED_TOKEN 一致`
+
+新增文件：
+
+- [app/dingtalk_bot.py](app/dingtalk_bot.py)
+- [connectors/dingtalk_stream_relay/main.py](connectors/dingtalk_stream_relay/main.py)
+- [scripts/start_dingtalk_stream_relay.sh](scripts/start_dingtalk_stream_relay.sh)
+- [scripts/print_dingtalk_setup_info.sh](scripts/print_dingtalk_setup_info.sh)
+- [scripts/smoke_dingtalk_webhook.sh](scripts/smoke_dingtalk_webhook.sh)
+- [deploy/tencent/dingtalk-stream-relay.service](deploy/tencent/dingtalk-stream-relay.service)
+
+最小启动方式：
+
+1. 后端启动：`bash scripts/start_prod_server.sh`
+2. relay 启动：`bash scripts/start_dingtalk_stream_relay.sh`
+3. 群里 `@机器人 /status 002436`
+
+主动通知目标 `openConversationId` 可通过先启动 relay、在群里 `@机器人` 发一条消息，然后从日志里的 `conversationId` 拿到。
+
 ## QQ 通知与双向通信
 
 当前实现的是一版可插拔 QQ 通道：
-
 1. 系统按 `SCHEDULER_INTRADAY_REFRESH_CRON` 定频刷新活跃股票池的盘中数据。
 2. 每轮会比较刷新前后的维护快照。
 3. 当涨跌幅变化超过 `SCHEDULER_INTRADAY_REFRESH_MIN_CHANGE_PERCENT` 时，自动生成摘要消息。

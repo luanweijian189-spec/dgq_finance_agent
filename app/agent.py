@@ -4,12 +4,21 @@ import re
 import subprocess
 from pathlib import Path
 
+from .agent_matrix import AgentMatrixManager
+from .repo_ops import RepoOpsManager
 from .services import FinanceAgentService
 
 
 class OpenClawCommandHandler:
-    def __init__(self, service: FinanceAgentService) -> None:
+    def __init__(
+        self,
+        service: FinanceAgentService,
+        matrix_manager: AgentMatrixManager | None = None,
+        repo_ops_manager: RepoOpsManager | None = None,
+    ) -> None:
         self.service = service
+        self.matrix_manager = matrix_manager
+        self.repo_ops_manager = repo_ops_manager
         self._repo_root = Path(__file__).resolve().parents[1]
         self._loop_script = self._repo_root / "scripts" / "copilot_hybrid_loop.sh"
 
@@ -41,6 +50,56 @@ class OpenClawCommandHandler:
         if not command:
             return "请输入指令，例如 /status 600519"
 
+        if command.startswith("/dev"):
+            if self.matrix_manager is None:
+                return "agent矩阵未启用"
+            payload = command[len("/dev") :].strip()
+            if payload in {"", "help"}:
+                return (
+                    "可用命令：/dev new <任务>；/dev run <task_id>；/dev status [task_id]；"
+                    "/dev summary <task_id>；/dev matrix"
+                )
+            if payload == "matrix":
+                return self.matrix_manager.describe_matrix()
+            if payload.startswith("new "):
+                objective = payload[len("new ") :].strip()
+                if not objective:
+                    return "格式错误，示例：/dev new 接入钉钉审批回调"
+                task = self.matrix_manager.create_task(
+                    objective,
+                    operator=operator,
+                    source="connector_command",
+                )
+                return (
+                    f"已创建 agent 任务：{task.task_id}\n"
+                    f"目标：{task.objective}\n"
+                    "下一步：/dev run "
+                    f"{task.task_id}"
+                )
+            if payload == "status":
+                return self.matrix_manager.format_task_list(self.matrix_manager.list_tasks(limit=5))
+            if payload.startswith("status "):
+                task_id = payload[len("status ") :].strip()
+                task = self.matrix_manager.get_task(task_id)
+                if task is None:
+                    return f"未找到任务：{task_id}"
+                return self.matrix_manager.format_task_brief(task)
+            if payload.startswith("run "):
+                task_id = payload[len("run ") :].strip()
+                try:
+                    task = self.matrix_manager.dispatch_task(task_id)
+                except ValueError:
+                    return f"未找到任务：{task_id}"
+                return self.matrix_manager.format_task_brief(task)
+            if payload.startswith("summary "):
+                task_id = payload[len("summary ") :].strip()
+                try:
+                    task = self.matrix_manager.summarize_task(task_id)
+                except ValueError:
+                    return f"未找到任务：{task_id}"
+                return self.matrix_manager.format_task_brief(task)
+            return "不支持的dev子命令。可用：new/run/status/summary/matrix"
+
         if command.startswith("/loop "):
             payload = command[len("/loop ") :].strip()
             if payload.startswith("init "):
@@ -53,6 +112,98 @@ class OpenClawCommandHandler:
             if payload in {"summary", "status"}:
                 return self._run_loop("summary")
             return "不支持的loop子命令。可用：/loop init <任务> /loop check /loop summary"
+
+        if command.startswith("/repo"):
+            if self.repo_ops_manager is None:
+                return "repo-ops 未启用"
+            payload = command[len("/repo") :].strip()
+            if payload in {"", "help"}:
+                return (
+                    "可用命令：/repo new <任务>；/repo auto <任务>；/repo plan <task_id>；"
+                    "/repo run <task_id>；/repo approve <task_id> [备注]；/repo summary <task_id>；"
+                    "/repo status [task_id]；/repo policy"
+                )
+            if payload == "policy":
+                return self.repo_ops_manager.describe_policy()
+            if payload == "status":
+                return self.repo_ops_manager.format_task_list(self.repo_ops_manager.list_tasks(limit=5))
+            if payload.startswith("status "):
+                task_id = payload[len("status ") :].strip()
+                task = self.repo_ops_manager.get_task(task_id)
+                if task is None:
+                    return f"未找到 repo 任务：{task_id}"
+                return self.repo_ops_manager.format_task_brief(task)
+            if payload.startswith("new "):
+                objective = payload[len("new ") :].strip()
+                if not objective:
+                    return "格式错误，示例：/repo new 给回测模块增加策略对比接口"
+                task = self.repo_ops_manager.create_task(
+                    objective,
+                    operator=operator,
+                    source="connector_command",
+                )
+                return (
+                    f"已创建 repo 任务：{task.task_id}\n"
+                    f"目标：{task.objective}\n"
+                    f"下一步：/repo plan {task.task_id}"
+                )
+            if payload.startswith("auto "):
+                objective = payload[len("auto ") :].strip()
+                if not objective:
+                    return "格式错误，示例：/repo auto 给 dashboard 增加昨收对比"
+                agent_task_id = ""
+                if self.matrix_manager is not None:
+                    agent_task = self.matrix_manager.create_task(
+                        objective,
+                        operator=operator,
+                        source="repo_autopilot",
+                    )
+                    agent_task = self.matrix_manager.dispatch_task(agent_task.task_id)
+                    agent_task_id = agent_task.task_id
+                repo_task = self.repo_ops_manager.create_task(
+                    objective,
+                    operator=operator,
+                    source="repo_autopilot",
+                    linked_agent_task_id=agent_task_id,
+                )
+                repo_task = self.repo_ops_manager.plan_task(repo_task.task_id)
+                return (
+                    f"已启动 autopilot。\n"
+                    f"agent任务：{agent_task_id or '<未创建>'}\n"
+                    f"repo任务：{repo_task.task_id}\n"
+                    f"状态：{repo_task.status}\n"
+                    f"说明：{repo_task.latest_message}"
+                )
+            if payload.startswith("plan "):
+                task_id = payload[len("plan ") :].strip()
+                try:
+                    task = self.repo_ops_manager.plan_task(task_id)
+                except ValueError:
+                    return f"未找到 repo 任务：{task_id}"
+                return self.repo_ops_manager.format_task_brief(task)
+            if payload.startswith("run "):
+                task_id = payload[len("run ") :].strip()
+                try:
+                    task = self.repo_ops_manager.execute_task(task_id)
+                except ValueError:
+                    return f"未找到 repo 任务：{task_id}"
+                return self.repo_ops_manager.format_task_brief(task)
+            if payload.startswith("summary "):
+                task_id = payload[len("summary ") :].strip()
+                try:
+                    task = self.repo_ops_manager.summarize_task(task_id)
+                except ValueError:
+                    return f"未找到 repo 任务：{task_id}"
+                return self.repo_ops_manager.format_task_brief(task)
+            if payload.startswith("approve "):
+                rest = payload[len("approve ") :].strip()
+                task_id, _, note = rest.partition(" ")
+                try:
+                    task = self.repo_ops_manager.approve_task(task_id.strip(), note.strip())
+                except ValueError:
+                    return f"未找到 repo 任务：{task_id.strip()}"
+                return self.repo_ops_manager.format_task_brief(task)
+            return "不支持的repo子命令。可用：new/auto/plan/run/approve/summary/status/policy"
 
         if command.startswith("/discover"):
             payload = command[len("/discover") :].strip()

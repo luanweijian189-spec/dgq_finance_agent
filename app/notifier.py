@@ -6,6 +6,7 @@ from typing import Iterable
 
 import requests
 
+from .dingtalk_bot import get_dingtalk_bot_client
 from .qq_official_bot import get_qq_official_bot_client
 
 
@@ -30,6 +31,33 @@ class WebhookNotifier(AlertNotifier):
         payload = {"title": title, "content": content, "message": f"{title}\n{content}"}
         response = requests.post(self.webhook_url, json=payload, timeout=5)
         response.raise_for_status()
+
+
+class DingTalkNotifier(AlertNotifier):
+    def __init__(
+        self,
+        client_id: str,
+        client_secret: str,
+        robot_code: str,
+        open_conversation_id: str,
+        api_base_url: str = "https://api.dingtalk.com",
+        oauth_url: str = "https://api.dingtalk.com/v1.0/oauth2/accessToken",
+        timeout_seconds: int = 10,
+    ) -> None:
+        self.open_conversation_id = str(open_conversation_id or "").strip()
+        self.client = get_dingtalk_bot_client(
+            str(client_id or "").strip(),
+            str(client_secret or "").strip(),
+            str(robot_code or "").strip(),
+            str(api_base_url or "https://api.dingtalk.com").strip(),
+            str(oauth_url or "https://api.dingtalk.com/v1.0/oauth2/accessToken").strip(),
+            max(int(timeout_seconds or 10), 3),
+        )
+
+    def send(self, title: str, content: str) -> None:
+        if not self.open_conversation_id:
+            raise ValueError("dingtalk notifier missing open_conversation_id")
+        self.client.send_group_text(self.open_conversation_id, f"{title}\n{content}".strip())
 
 
 class QQBotNotifier(AlertNotifier):

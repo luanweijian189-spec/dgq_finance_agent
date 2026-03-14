@@ -1,0 +1,51 @@
+nohup: ignoring input
+2026-03-10 12:02:35,244 dingtalk_stream_relay INFO dingtalk stream preflight ok
+2026-03-10 12:02:35,245 dingtalk_stream.client INFO open connection, url=https://api.dingtalk.com/v1.0/gateway/connections/open
+2026-03-10 12:02:35,301 dingtalk_stream.client INFO endpoint is {'endpoint': 'wss://wss-open-connection-union.dingtalk.com:443/connect', 'ticket': 'f87c1a7a-1c35-11f1-bee8-0eb3b764c0bb'}
+2026-03-10 12:15:38,730 dingtalk_stream_relay INFO dingtalk callback received: conversation=cidZFGGT+dA8O7ldo2OdM2BaA== type=2 sender=栾为坚 at=True msgtype=text text=你好
+2026-03-10 12:15:38,795 dingtalk_stream_relay INFO dingtalk relay handled: action=research conversation=cidZFGGT+dA8O7ldo2OdM2BaA== sender=栾为坚
+2026-03-10 12:16:10,864 dingtalk_stream_relay INFO dingtalk callback received: conversation=cidZFGGT+dA8O7ldo2OdM2BaA== type=2 sender=栾为坚 at=True msgtype=text text=花旗分析師在一份研究報告中表示，騰訊新推出的人工智能智能體可能標誌着AI在中國應用的一個拐點。
+
+Workbuddy是一款類似於OpenClaw的AI智能體，能夠理解自然語言、自主思考並管理用戶任務。花旗認爲，這可能代表着“中國國內從當前的‘聊天AI’模式向‘執行AI’模式的重大轉變“。他們補充說，這一進展對騰訊來說是一個重要的里程碑，爲評估AI智能體未來在其微信小程序生態系統中的融合與作用提供了鮮活的場景。
+2026-03-10 12:16:10,945 dingtalk_stream_relay INFO dingtalk relay handled: action=research conversation=cidZFGGT+dA8O7ldo2OdM2BaA== sender=栾为坚
+2026-03-10 12:20:30,579 dingtalk_stream_relay INFO dingtalk callback received: conversation=cidZFGGT+dA8O7ldo2OdM2BaA== type=2 sender=栾为坚 at=True msgtype=text text=反馈给我东山精密最新分析
+2026-03-10 12:20:30,760 dingtalk_stream_relay INFO dingtalk relay handled: action=research conversation=cidZFGGT+dA8O7ldo2OdM2BaA== sender=栾为坚
+2026-03-10 12:36:38,384 dingtalk_stream_relay INFO dingtalk callback received: conversation=cidZFGGT+dA8O7ldo2OdM2BaA== type=2 sender=栾为坚 at=True msgtype=text text=这是我们的agent
+2026-03-10 12:36:38,895 dingtalk_stream_relay INFO dingtalk relay handled: action=research conversation=cidZFGGT+dA8O7ldo2OdM2BaA== sender=栾为坚
+2026-03-10 13:20:24,013 dingtalk_stream_relay INFO dingtalk callback received: conversation=cidZFGGT+dA8O7ldo2OdM2BaA== type=2 sender=刘方旭 at=True msgtype=text text=现在跟踪了哪些股票
+2026-03-10 13:20:24,142 dingtalk_stream_relay INFO dingtalk relay handled: action=research conversation=cidZFGGT+dA8O7ldo2OdM2BaA== sender=刘方旭
+2026-03-10 13:20:57,848 dingtalk_stream_relay INFO dingtalk callback received: conversation=cidZFGGT+dA8O7ldo2OdM2BaA== type=2 sender=刘方旭 at=True msgtype=text text=你目前只能接受荐股吗
+2026-03-10 13:20:57,922 dingtalk_stream_relay INFO dingtalk relay handled: action=research conversation=cidZFGGT+dA8O7ldo2OdM2BaA== sender=刘方旭
+2026-03-10 13:48:12,087 dingtalk_stream_relay INFO dingtalk callback received: conversation=cidZFGGT+dA8O7ldo2OdM2BaA== type=2 sender=栾为坚 at=True msgtype=text text=【国泰海通家电蔡雯娟】安孚科技更新及持续推荐260310
+我们持续看好主业稳健+第二曲线成长的安孚科技，今日很多投资者关注安孚科技公告以简易程序向特定对象发行股票3亿元，作如下解读：
+ 
+根据监管要求，本次公司拟将募集资金【用于公司主营业务相关项目】，不得用于持有财务性投资。我们预计此次募集的3亿元主要预留给后续实体主业扩产，具体募投项目仍有待公布。
+ 
+公司在年报中将易缆微等第二曲线培育定义为新业务的探索布局，与易缆微管理层已达成共识具备深入合作的意愿，随着易缆微在技术迭代、产能建设及客户验证等方面逐步取得实质进展，未来将择机进一步提升持股比例。此前安孚同一实控人的兄弟企业东山精密已收购光通信龙头索尔思光电，易缆微有望依托安孚及其股东产业资源形成产业链互补导入订单。未来安孚科技有望【通过合作、并购等方式将优质产业资源纳入公司业务体系】，真正切入半导体等新兴赛道，加速多元化业务转型。
+2026-03-10 13:48:16,523 dingtalk_stream_relay INFO dingtalk relay handled: action=ingest conversation=cidZFGGT+dA8O7ldo2OdM2BaA== sender=栾为坚
+2026-03-10 22:11:54,105 dingtalk_stream_relay INFO dingtalk callback received: conversation=cidZFGGT+dA8O7ldo2OdM2BaA== type=2 sender=云凡 at=True msgtype=text text=你有什么能力
+2026-03-10 22:11:54,176 dingtalk_stream_relay INFO dingtalk relay handled: action=research conversation=cidZFGGT+dA8O7ldo2OdM2BaA== sender=云凡
+2026-03-11 00:02:35,447 dingtalk_stream.client INFO received disconnect topic=disconnect, message={'specVersion': '1.0', 'type': 'SYSTEM', 'headers': {'contentType': 'application/json', 'messageId': 'c0a816e017731585553673180002d44', 'time': '1773158555367', 'topic': 'disconnect'}, 'data': '{"reason":"persistent connection is timeout"}'}
+2026-03-11 00:02:35,578 dingtalk_stream.client INFO open connection, url=https://api.dingtalk.com/v1.0/gateway/connections/open
+2026-03-11 00:02:36,013 dingtalk_stream.client INFO endpoint is {'endpoint': 'wss://wss-open-connection-union.dingtalk.com:443/connect', 'ticket': '8e1720ba-1c9a-11f1-8859-6e93dbd8800c'}
+2026-03-11 12:02:36,293 dingtalk_stream.client INFO received disconnect topic=disconnect, message={'specVersion': '1.0', 'type': 'SYSTEM', 'headers': {'contentType': 'application/json', 'messageId': 'c0a8214d17732017562451010014d43', 'time': '1773201756245', 'topic': 'disconnect'}, 'data': '{"reason":"persistent connection is timeout"}'}
+2026-03-11 12:02:36,379 dingtalk_stream.client INFO open connection, url=https://api.dingtalk.com/v1.0/gateway/connections/open
+2026-03-11 12:02:36,618 dingtalk_stream.client INFO endpoint is {'endpoint': 'wss://wss-open-connection-union.dingtalk.com:443/connect', 'ticket': '23ab898a-1cff-11f1-89c2-1ac2e7aba1f4'}
+2026-03-12 00:02:36,786 dingtalk_stream.client INFO received disconnect topic=disconnect, message={'specVersion': '1.0', 'type': 'SYSTEM', 'headers': {'contentType': 'application/json', 'messageId': 'c0a816e217732449567813381007d44', 'time': '1773244956781', 'topic': 'disconnect'}, 'data': '{"reason":"persistent connection is timeout"}'}
+2026-03-12 00:02:36,794 dingtalk_stream.client INFO open connection, url=https://api.dingtalk.com/v1.0/gateway/connections/open
+2026-03-12 00:02:36,854 dingtalk_stream.client INFO endpoint is {'endpoint': 'wss://wss-open-connection-union.dingtalk.com:443/connect', 'ticket': 'b9074d46-1d63-11f1-a88a-ead72ea0a369'}
+2026-03-12 12:02:36,945 dingtalk_stream.client INFO received disconnect topic=disconnect, message={'specVersion': '1.0', 'type': 'SYSTEM', 'headers': {'contentType': 'application/json', 'messageId': 'c0a8215f177328815694169483d44', 'time': '1773288156941', 'topic': 'disconnect'}, 'data': '{"reason":"persistent connection is timeout"}'}
+2026-03-12 12:02:36,954 dingtalk_stream.client INFO open connection, url=https://api.dingtalk.com/v1.0/gateway/connections/open
+2026-03-12 12:02:37,418 dingtalk_stream.client INFO endpoint is {'endpoint': 'wss://wss-open-connection-union.dingtalk.com:443/connect', 'ticket': '4e926f3a-1dc8-11f1-b7a2-faf2d53e39a8'}
+2026-03-13 00:02:37,517 dingtalk_stream.client INFO received disconnect topic=disconnect, message={'specVersion': '1.0', 'type': 'SYSTEM', 'headers': {'contentType': 'application/json', 'messageId': 'c0a8215a1773331357513144260d43', 'time': '1773331357513', 'topic': 'disconnect'}, 'data': '{"reason":"persistent connection is timeout"}'}
+2026-03-13 00:02:37,526 dingtalk_stream.client INFO open connection, url=https://api.dingtalk.com/v1.0/gateway/connections/open
+2026-03-13 00:02:37,585 dingtalk_stream.client INFO endpoint is {'endpoint': 'wss://wss-open-connection-union.dingtalk.com:443/connect', 'ticket': 'e3e0cb94-1e2c-11f1-80c0-7e88154b8801'}
+2026-03-13 12:02:37,697 dingtalk_stream.client INFO received disconnect topic=disconnect, message={'specVersion': '1.0', 'type': 'SYSTEM', 'headers': {'contentType': 'application/json', 'messageId': 'c0a816e117733745576903617985d44', 'time': '1773374557690', 'topic': 'disconnect'}, 'data': '{"reason":"persistent connection is timeout"}'}
+2026-03-13 12:02:37,707 dingtalk_stream.client INFO open connection, url=https://api.dingtalk.com/v1.0/gateway/connections/open
+2026-03-13 12:02:37,766 dingtalk_stream.client INFO endpoint is {'endpoint': 'wss://wss-open-connection-union.dingtalk.com:443/connect', 'ticket': '79314047-1e91-11f1-97b5-aeba82a4fbb5'}
+2026-03-14 00:02:37,935 dingtalk_stream.client INFO received disconnect topic=disconnect, message={'specVersion': '1.0', 'type': 'SYSTEM', 'headers': {'contentType': 'application/json', 'messageId': 'c0a816e217734177579313709545d44', 'time': '1773417757931', 'topic': 'disconnect'}, 'data': '{"reason":"persistent connection is timeout"}'}
+2026-03-14 00:02:37,944 dingtalk_stream.client INFO open connection, url=https://api.dingtalk.com/v1.0/gateway/connections/open
+2026-03-14 00:02:37,999 dingtalk_stream.client INFO endpoint is {'endpoint': 'wss://wss-open-connection-union.dingtalk.com:443/connect', 'ticket': '0e89fae1-1ef6-11f1-97b5-aeba82a4fbb5'}
+2026-03-14 12:02:38,123 dingtalk_stream.client INFO received disconnect topic=disconnect, message={'specVersion': '1.0', 'type': 'SYSTEM', 'headers': {'contentType': 'application/json', 'messageId': 'c0a816e217734609581183829350d44', 'time': '1773460958118', 'topic': 'disconnect'}, 'data': '{"reason":"persistent connection is timeout"}'}
+2026-03-14 12:02:38,132 dingtalk_stream.client INFO open connection, url=https://api.dingtalk.com/v1.0/gateway/connections/open
+2026-03-14 12:02:38,192 dingtalk_stream.client INFO endpoint is {'endpoint': 'wss://wss-open-connection-union.dingtalk.com:443/connect', 'ticket': 'a3dc34d4-1f5a-11f1-b224-2234c1bfad51'}

@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from .agent import OpenClawCommandHandler
+from .agent_matrix import build_agent_matrix_manager
 from .analysis_agent import StockAnalysisAgent
 from .config import get_basic_auth_exempt_paths, get_settings
 from .database import SessionLocal, get_db_session
@@ -23,6 +24,7 @@ from .llm_usage_store import LLMUsageStore
 from .memory import MemoryRetriever
 from .notifier import (
     CompositeNotifier,
+    DingTalkNotifier,
     OpenClawNotifier,
     QQBotNotifier,
     QQOfficialBotNotifier,
@@ -42,10 +44,13 @@ from .qq_official_bot import (
     parse_qq_message_event,
     verify_qq_signature,
 )
+from .repo_ops import build_repo_ops_manager
 from .rag_store import ResearchNoteStore
 from .stock_knowledge_store import StockKnowledgeStore
 from .schemas import (
     AlertRequest,
+    AgentMatrixTaskActionRequest,
+    AgentMatrixTaskCreateRequest,
     BulkImportTextRequest,
     BulkImportTextResponse,
     CommandRequest,
@@ -62,6 +67,8 @@ from .schemas import (
     NewsCandidatePromoteRequest,
     NewsScanRequest,
     NewsScanResponse,
+    RepoOpsTaskActionRequest,
+    RepoOpsTaskCreateRequest,
     ResearchTextRequest,
 )
 from .scheduler import add_intraday_refresh_job, add_news_scan_job, create_scheduler
@@ -308,6 +315,24 @@ def _build_notifier(settings):
     notifiers = [StdoutNotifier()]
     if settings.alert_webhook_url:
         notifiers.append(WebhookNotifier(settings.alert_webhook_url))
+    if (
+        settings.dingtalk_bot_enabled
+        and settings.dingtalk_client_id
+        and settings.dingtalk_client_secret
+        and settings.dingtalk_robot_code
+        and settings.dingtalk_open_conversation_id
+    ):
+        notifiers.append(
+            DingTalkNotifier(
+                client_id=settings.dingtalk_client_id,
+                client_secret=settings.dingtalk_client_secret,
+                robot_code=settings.dingtalk_robot_code,
+                open_conversation_id=settings.dingtalk_open_conversation_id,
+                api_base_url=settings.dingtalk_api_base_url,
+                oauth_url=settings.dingtalk_oauth_url,
+                timeout_seconds=settings.dingtalk_timeout_seconds,
+            )
+        )
     if settings.openclaw_notifier_enabled:
         notifiers.append(
             OpenClawNotifier(
@@ -417,6 +442,20 @@ def get_service(db: Session = Depends(get_db_session)) -> FinanceAgentService:
     )
 
 
+def get_agent_matrix_manager():
+    settings = get_settings()
+    if not settings.agent_matrix_enabled:
+        raise HTTPException(status_code=503, detail="agent matrix disabled")
+    return build_agent_matrix_manager(settings)
+
+
+def get_repo_ops_manager():
+    settings = get_settings()
+    if not settings.repo_ops_enabled:
+        raise HTTPException(status_code=503, detail="repo ops disabled")
+    return build_repo_ops_manager(settings)
+
+
 def get_intraday_provider():
     settings = get_settings()
     return build_intraday_provider(
@@ -453,6 +492,8 @@ def _normalize_connector_payload(payload: dict | None) -> dict[str, str]:
     data = payload or {}
     sender = data.get("sender") if isinstance(data.get("sender"), dict) else {}
     conversation = data.get("conversation") if isinstance(data.get("conversation"), dict) else {}
+    text_payload = data.get("text") if isinstance(data.get("text"), dict) else {}
+    content_payload = data.get("content") if isinstance(data.get("content"), dict) else {}
     post_type = _first_non_empty(data.get("post_type"), data.get("notice_type"), data.get("request_type"))
     message_type = _first_non_empty(data.get("message_type"), data.get("sub_type"))
 
@@ -467,6 +508,7 @@ def _normalize_connector_payload(payload: dict | None) -> dict[str, str]:
     recommender_name = _first_non_empty(
         data.get("recommender_name"),
         data.get("sender_name"),
+        data.get("senderNick"),
         data.get("nickname"),
         data.get("operator"),
         data.get("from_name"),
@@ -476,6 +518,8 @@ def _normalize_connector_payload(payload: dict | None) -> dict[str, str]:
     sender_id = _first_non_empty(
         data.get("wechat_id"),
         data.get("sender_id"),
+        data.get("senderStaffId"),
+        data.get("senderId"),
         data.get("user_id"),
         data.get("from_id"),
         data.get("qq"),
@@ -486,6 +530,7 @@ def _normalize_connector_payload(payload: dict | None) -> dict[str, str]:
     room_topic = _first_non_empty(
         data.get("room_topic"),
         data.get("group_name"),
+        data.get("conversationTitle"),
         data.get("conversation_name"),
         data.get("chat_name"),
         conversation.get("name"),
@@ -494,13 +539,14 @@ def _normalize_connector_payload(payload: dict | None) -> dict[str, str]:
         data.get("group_id"),
         data.get("room_id"),
         data.get("conversation_id"),
+        data.get("conversationId"),
         data.get("chat_id"),
         conversation.get("id"),
     )
     message = _first_non_empty(
         data.get("message"),
-        data.get("text"),
-        data.get("content"),
+        text_payload.get("content") if isinstance(text_payload, dict) else data.get("text"),
+        content_payload.get("content") if isinstance(content_payload, dict) else data.get("content"),
         data.get("body"),
         data.get("raw_message"),
     )
@@ -517,6 +563,12 @@ def _normalize_connector_payload(payload: dict | None) -> dict[str, str]:
         if message_type.lower() == "group":
             event_type = "group_message"
         elif message_type.lower() == "private":
+            event_type = "private_message"
+    if event_type == "message":
+        conversation_type = _first_non_empty(data.get("conversationType"))
+        if conversation_type == "2":
+            event_type = "group_message"
+        elif conversation_type == "1":
             event_type = "private_message"
 
     return {
@@ -579,7 +631,11 @@ def _handle_connector_webhook(
         }
 
     if message.startswith("/"):
-        handler = OpenClawCommandHandler(service)
+        handler = OpenClawCommandHandler(
+            service,
+            matrix_manager=get_agent_matrix_manager(),
+            repo_ops_manager=get_repo_ops_manager(),
+        )
         operator = f"{normalized['channel']}:{normalized['sender_id'] or normalized['recommender_name']}"
         reply_message = handler.handle(message, operator=operator)
         return {
@@ -1103,9 +1159,143 @@ def create_app() -> FastAPI:
 
     @app.post("/api/commands", response_model=CommandResponse)
     def run_command(payload: CommandRequest, service: FinanceAgentService = Depends(get_service)):
-        handler = OpenClawCommandHandler(service)
+        handler = OpenClawCommandHandler(
+            service,
+            matrix_manager=get_agent_matrix_manager(),
+            repo_ops_manager=get_repo_ops_manager(),
+        )
         result = handler.handle(payload.command, operator="api_user")
         return CommandResponse(result=result)
+
+    @app.get("/api/dev/agent-matrix/roles")
+    def list_agent_matrix_roles():
+        manager = get_agent_matrix_manager()
+        return {"items": [role.model_dump() for role in manager.build_default_matrix()]}
+
+    @app.get("/api/dev/agent-matrix/tasks")
+    def list_agent_matrix_tasks(limit: int = 20, status: str = ""):
+        manager = get_agent_matrix_manager()
+        items = manager.list_tasks(limit=limit, status=status)
+        return {"items": [item.model_dump() for item in items]}
+
+    @app.post("/api/dev/agent-matrix/tasks")
+    def create_agent_matrix_task(payload: AgentMatrixTaskCreateRequest):
+        manager = get_agent_matrix_manager()
+        task = manager.create_task(
+            payload.objective,
+            context=payload.context,
+            operator=payload.operator,
+            source=payload.source,
+            conversation_id=payload.conversation_id,
+            branch=payload.branch,
+        )
+        if payload.auto_dispatch:
+            task = manager.dispatch_task(task.task_id, auto_check=payload.auto_check)
+        return task.model_dump()
+
+    @app.get("/api/dev/agent-matrix/tasks/{task_id}")
+    def get_agent_matrix_task(task_id: str):
+        manager = get_agent_matrix_manager()
+        task = manager.get_task(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="agent matrix task not found")
+        return task.model_dump()
+
+    @app.post("/api/dev/agent-matrix/tasks/{task_id}/dispatch")
+    def dispatch_agent_matrix_task(task_id: str, payload: AgentMatrixTaskActionRequest):
+        manager = get_agent_matrix_manager()
+        try:
+            task = manager.dispatch_task(task_id, auto_check=payload.auto_check)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="agent matrix task not found") from exc
+        return task.model_dump()
+
+    @app.post("/api/dev/agent-matrix/tasks/{task_id}/summary")
+    def summarize_agent_matrix_task(task_id: str):
+        manager = get_agent_matrix_manager()
+        try:
+            task = manager.summarize_task(task_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="agent matrix task not found") from exc
+        return task.model_dump()
+
+    @app.get("/api/dev/repo-ops/policy")
+    def get_repo_ops_policy():
+        manager = get_repo_ops_manager()
+        return {
+            "provider": manager.provider,
+            "workspace": manager.workspace,
+            "default_branch": manager.default_branch,
+            "policy": manager.default_policy.model_dump(),
+        }
+
+    @app.get("/api/dev/repo-ops/tasks")
+    def list_repo_ops_tasks(limit: int = 20, status: str = ""):
+        manager = get_repo_ops_manager()
+        items = manager.list_tasks(limit=limit, status=status)
+        return {"items": [item.model_dump() for item in items]}
+
+    @app.post("/api/dev/repo-ops/tasks")
+    def create_repo_ops_task(payload: RepoOpsTaskCreateRequest):
+        manager = get_repo_ops_manager()
+        task = manager.create_task(
+            payload.objective,
+            context=payload.context,
+            operator=payload.operator,
+            source=payload.source,
+            conversation_id=payload.conversation_id,
+            linked_agent_task_id=payload.linked_agent_task_id,
+            target_branch=payload.target_branch,
+        )
+        if payload.auto_plan:
+            task = manager.plan_task(task.task_id)
+        if payload.auto_execute:
+            task = manager.execute_task(task.task_id)
+        return task.model_dump()
+
+    @app.get("/api/dev/repo-ops/tasks/{task_id}")
+    def get_repo_ops_task(task_id: str):
+        manager = get_repo_ops_manager()
+        task = manager.get_task(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="repo ops task not found")
+        return task.model_dump()
+
+    @app.post("/api/dev/repo-ops/tasks/{task_id}/plan")
+    def plan_repo_ops_task(task_id: str):
+        manager = get_repo_ops_manager()
+        try:
+            task = manager.plan_task(task_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="repo ops task not found") from exc
+        return task.model_dump()
+
+    @app.post("/api/dev/repo-ops/tasks/{task_id}/execute")
+    def execute_repo_ops_task(task_id: str):
+        manager = get_repo_ops_manager()
+        try:
+            task = manager.execute_task(task_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="repo ops task not found") from exc
+        return task.model_dump()
+
+    @app.post("/api/dev/repo-ops/tasks/{task_id}/summary")
+    def summarize_repo_ops_task(task_id: str):
+        manager = get_repo_ops_manager()
+        try:
+            task = manager.summarize_task(task_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="repo ops task not found") from exc
+        return task.model_dump()
+
+    @app.post("/api/dev/repo-ops/tasks/{task_id}/approve")
+    def approve_repo_ops_task(task_id: str, payload: RepoOpsTaskActionRequest):
+        manager = get_repo_ops_manager()
+        try:
+            task = manager.approve_task(task_id, note=payload.note)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="repo ops task not found") from exc
+        return task.model_dump()
 
     @app.post("/api/news/scan", response_model=NewsScanResponse)
     def scan_news(payload: NewsScanRequest, service: FinanceAgentService = Depends(get_service)):
@@ -1149,6 +1339,8 @@ def create_app() -> FastAPI:
 
     @app.post("/api/connectors/openclaw/webhook")
     @app.post("/api/connectors/qq/webhook")
+    @app.post("/api/connectors/dingtalk/webhook")
+    @app.post("/api/connectors/dingding/webhook")
     def openclaw_connector_webhook(
         request: Request,
         payload: dict,

@@ -64,6 +64,37 @@ class CommandRequest(BaseModel):
     command: str
 
 
+class AgentMatrixTaskCreateRequest(BaseModel):
+    objective: str
+    context: str = ""
+    operator: str = "api_user"
+    source: str = "api"
+    conversation_id: str = ""
+    branch: str = ""
+    auto_dispatch: bool = False
+    auto_check: bool = False
+
+
+class AgentMatrixTaskActionRequest(BaseModel):
+    auto_check: bool = False
+
+
+class RepoOpsTaskCreateRequest(BaseModel):
+    objective: str
+    context: str = ""
+    operator: str = "api_user"
+    source: str = "api"
+    conversation_id: str = ""
+    linked_agent_task_id: str = ""
+    target_branch: str = ""
+    auto_plan: bool = True
+    auto_execute: bool = False
+
+
+class RepoOpsTaskActionRequest(BaseModel):
+    note: str = ""
+
+
 class AlertRequest(BaseModel):
     stock_code: str = Field(pattern=r"^(60|00|30|68)\d{4}$")
     subscriber: str
